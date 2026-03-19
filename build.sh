@@ -69,6 +69,17 @@ setup_robot_descriptions() {
     fi
 }
 
+setup_gazebo_models() {
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+    DOWNLOAD_GAZEBO_MODELS_SCRIPT="${SCRIPT_DIR}/scripts/download_gazebo_models.sh"
+
+    if [ -f "$DOWNLOAD_GAZEBO_MODELS_SCRIPT" ]; then
+        bash "$DOWNLOAD_GAZEBO_MODELS_SCRIPT" || {
+            print_warning "Gazebo models setup skipped (optional for simulation)"
+        }
+    fi
+}
+
 run_cmake_build() {
     print_header "[Running CMake Build]"
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
@@ -397,6 +408,7 @@ main() {
 
     setup_inference_runtime
     setup_robot_descriptions
+    setup_gazebo_models
     run_ros_build "${packages[@]}"
 }
 

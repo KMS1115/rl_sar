@@ -195,6 +195,27 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 # Example: ./cmake_build/bin/rl_sim_mujoco g1 scene_29dof
 ```
 
+#### Docker
+
+Docker支持仿真和部署。详见 [docker/README.md](docker/README.md)。
+
+```bash
+# 启动容器
+xhost +local:docker  # 在主机上启用X11
+cd docker && docker compose up -d
+docker compose exec rl_sar bash
+
+# 容器内 - MuJoCo仿真
+./cmake_build/bin/rl_sim_mujoco g1 scene_29dof
+
+# 容器内 - Gazebo仿真
+ros2 launch rl_sar gazebo.launch.py rname:=go2
+# (新终端) ros2 run rl_sar rl_sim
+
+# 容器内 - 真实机器人
+./cmake_build/bin/rl_real_go2 <NETWORK_INTERFACE>
+```
+
 ### 使用手机网页控制 (实验性)
 
 安装依赖
