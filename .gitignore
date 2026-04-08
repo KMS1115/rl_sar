@@ -16,9 +16,6 @@
 .DS_Store
 Thumbs.db
 
-# Runtime downloads
-/src/rl_sar_zoo/
-
 # Logs / dumps
 MUJOCO_LOG.TXT
 /core
