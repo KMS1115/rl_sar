@@ -17,16 +17,37 @@ class RLFSMStatePassive : public RLFSMState
 public:
     RLFSMStatePassive(RL *rl) : RLFSMState(*rl, "RLFSMStatePassive") {}
 
+    bool do_startup_hold = true;
+    float startup_hold_percent = 0.0f;
+
     void Enter() override
     {
-        std::cout << LOGGER::NOTE << "Entered passive mode. Press '0' (Keyboard) or 'A' (Gamepad) to switch to RLFSMStateGetUp." << std::endl;
+        startup_hold_percent = 0.0f;
+        std::cout << LOGGER::NOTE
+                  << "Entered passive mode. Keyboard: 0=GetUp, 1=RL, 9=GetDown, P=E-stop. "
+                  << "Gamepad: A=Stand/Sit, B=RL, L2+R2=E-stop."
+                  << std::endl;
     }
 
     void Run() override
     {
+        if (do_startup_hold)
+        {
+            auto startup_dof_pos = rl.params.Get<std::vector<float>>(
+                "startup_dof_pos",
+                rl.params.Get<std::vector<float>>("default_dof_pos")
+            );
+            rl.now_state = *fsm_state;
+            if (Interpolate(startup_hold_percent, rl.now_state.motor_state.q, startup_dof_pos, 1.5f, "Stabilizing startup", true))
+            {
+                return;
+            }
+            do_startup_hold = false;
+        }
+
         for (int i = 0; i < rl.params.Get<int>("num_of_dofs"); ++i)
         {
-            // fsm_command->motor_command.q[i] = fsm_state->motor_state.q[i];
+            fsm_command->motor_command.q[i] = fsm_state->motor_state.q[i];
             fsm_command->motor_command.dq[i] = 0;
             fsm_command->motor_command.kp[i] = 0;
             fsm_command->motor_command.kd[i] = 8;
@@ -54,11 +75,10 @@ public:
     float percent_pre_getup = 0.0f;
     float percent_getup = 0.0f;
     std::vector<float> pre_running_pos = {
-        0.00, 1.36, -2.65,
-        0.00, 1.36, -2.65,
-        0.00, 1.36, -2.65,
-        0.00, 1.36, -2.65,
-        0.00, 0.00, 0.00, 0.00
+        0.00, 1.10, -2.10,
+        0.00, 1.10, -2.10,
+        0.00, 1.10, -2.10,
+        0.00, 1.10, -2.10
     };
     bool stand_from_passive = true;
 
@@ -96,17 +116,19 @@ public:
 
     std::string CheckChange() override
     {
-        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X)
+        if (rl.control.current_keyboard == Input::Keyboard::P ||
+            rl.control.current_gamepad == Input::Gamepad::LB_X ||
+            rl.control.current_gamepad == Input::Gamepad::L2_R2)
         {
             return "RLFSMStatePassive";
         }
         if (percent_getup >= 1.0f)
         {
-            if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+            if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::B)
             {
                 return "RLFSMStateRLLocomotion";
             }
-            else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
+            else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::A)
             {
                 return "RLFSMStateGetDown";
             }
@@ -137,7 +159,10 @@ public:
 
     std::string CheckChange() override
     {
-        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X || percent_getdown >= 1.0f)
+        if (rl.control.current_keyboard == Input::Keyboard::P ||
+            rl.control.current_gamepad == Input::Gamepad::LB_X ||
+            rl.control.current_gamepad == Input::Gamepad::L2_R2 ||
+            percent_getdown >= 1.0f)
         {
             return "RLFSMStatePassive";
         }
@@ -162,7 +187,7 @@ public:
         rl.episode_length_buf = 0;
 
         // read params from yaml
-        rl.config_name = "himloco";
+        rl.config_name = "robot_lab";
         std::string robot_config_path = rl.robot_name + "/" + rl.config_name;
         try
         {
@@ -195,11 +220,13 @@ public:
 
     std::string CheckChange() override
     {
-        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X)
+        if (rl.control.current_keyboard == Input::Keyboard::P ||
+            rl.control.current_gamepad == Input::Gamepad::LB_X ||
+            rl.control.current_gamepad == Input::Gamepad::L2_R2)
         {
             return "RLFSMStatePassive";
         }
-        else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
+        else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::A)
         {
             return "RLFSMStateGetDown";
         }
@@ -207,7 +234,7 @@ public:
         {
             return "RLFSMStateGetUp";
         }
-        else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+        else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::B)
         {
             return "RLFSMStateRLLocomotion";
         }

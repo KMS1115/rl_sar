@@ -25,6 +25,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <memory>
+#include <string>
 
 #include <mujoco/mujoco.h>
 #include "joystick.hh"
@@ -88,21 +89,21 @@ private:
     // joystick
     std::unique_ptr<Joystick> sys_js;
     JoystickEvent sys_js_event;
+    std::string sys_js_device;
 
     Button sys_js_button[20];
     int sys_js_axis[10] = {0};
     bool sys_js_active = false;
     float axis_deadzone = 0.05f;
     int sys_js_max_value = (1 << (16 - 1));
-    void SetupSysJoystick(const std::string& device, int bits);
+    bool TryOpenSysJoystick(const std::string& device);
+    void SetupSysJoystick(int bits);
     void GetSysJoystick();
 
     // others
-    std::string gazebo_model_name;
     std::map<std::string, float> joint_positions;
     std::map<std::string, float> joint_velocities;
     std::map<std::string, float> joint_efforts;
-    void StartJointController(const std::string& ros_namespace, const std::vector<std::string>& names);
 };
 
 #endif // RL_SIM_HPP

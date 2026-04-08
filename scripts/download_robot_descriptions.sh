@@ -55,16 +55,23 @@ is_version_uptodate() {
     return 1
 }
 
+# Function: Remove all descriptions except go2/go2w
+prune_robot_descriptions() {
+    if [ ! -d "$ROBOT_DESC_DIR" ]; then
+        return 0
+    fi
+
+    find "$ROBOT_DESC_DIR" -maxdepth 1 -mindepth 1 -type d -name "*_description" \
+        ! -name "go2_description" ! -name "go2w_description" -exec rm -rf {} +
+}
+
 # Function: Validate robot descriptions installation
 is_robot_descriptions_valid() {
     if [ ! -d "$ROBOT_DESC_DIR" ]; then
         return 1
     fi
 
-    # Check if directory contains expected robot description files
-    # Look for at least one robot description directory
-    local robot_count=$(find "$ROBOT_DESC_DIR" -maxdepth 1 -type d -name "*_description" | wc -l)
-    if [ "$robot_count" -gt 0 ]; then
+    if [ -d "${ROBOT_DESC_DIR}/go2_description" ] && [ -d "${ROBOT_DESC_DIR}/go2w_description" ]; then
         return 0
     fi
 
@@ -76,10 +83,12 @@ print_header "[Robot Descriptions Setup]"
 
 # Check if robot descriptions already exist and are valid
 if is_robot_descriptions_valid; then
+    prune_robot_descriptions
+
     # Check if version is up-to-date
     if is_version_uptodate; then
         current_version=$(get_current_version)
-        print_success "Robot descriptions are up-to-date (version: ${current_version})"
+        print_success "go2/go2w robot descriptions are up-to-date (version: ${current_version})"
         print_info "Installation path: ${ROBOT_DESC_DIR}"
         exit 0
     fi
@@ -102,6 +111,7 @@ if is_robot_descriptions_valid; then
             }
 
             cd "$PROJECT_ROOT"
+            prune_robot_descriptions
             print_success "Robot descriptions updated successfully"
         else
             print_warning "Not a git repository, cannot update"
@@ -139,6 +149,7 @@ if [ -d "$ROBOT_DESC_DIR" ]; then
         }
 
         cd "$PROJECT_ROOT"
+        prune_robot_descriptions
 
         # Recheck validity after update attempt
         if is_robot_descriptions_valid; then
@@ -173,6 +184,8 @@ git clone --branch "$REPO_BRANCH" "$REPO_URL" "$ROBOT_DESC_DIR" || {
     exit 1
 }
 
+prune_robot_descriptions
+
 # Verify installation
 if ! is_robot_descriptions_valid; then
     print_error "Robot descriptions installation failed"
@@ -182,4 +195,5 @@ fi
 print_separator
 print_success "Robot descriptions setup completed!"
 print_info "Installation path: ${ROBOT_DESC_DIR}"
+print_info "Retained descriptions: go2_description, go2w_description"
 print_info "Version: ${EXPECTED_VERSION}"

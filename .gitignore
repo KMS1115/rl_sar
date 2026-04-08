@@ -1,44 +1,42 @@
-# CMake
-build
-devel
-logs
-install
-log
-.catkin_tools
-cmake_build
-package.xml
+# Build artifacts
+/build/
+/devel/
+/install/
+/log/
+/logs/
+/.catkin_tools/
+/cmake_build/
+/compile_commands.json
 
-# Rust
-rust_build
-Cargo.lock
-
-# Python
-__pycache__
-
-# IDE
-.vscode
-
-# OS
+# Editor / OS
+/.idea/
+/.vscode/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 
-# Interface
-onnxruntime
-libtorch
+# Runtime downloads
+/library/inference_runtime/onnxruntime/
+/library/inference_runtime/onnxruntime-*/
+/library/mujoco/
+/src/rl_sar_zoo/
 
-# Mujoco
-mujoco
+# Logs / dumps
 MUJOCO_LOG.TXT
+core
+core.*
+*.stackdump
 
-# Data
-.cache
-*.json
+# Python
+__pycache__/
+.cache/
 
-# temp
+# Temporary archives
 *.zip
 *.tgz
 *.tar.gz
 temp_extract*/
 
-# robot descriptions
-rl_sar_zoo
+# Runtime outputs
+/policy/**/motor.csv

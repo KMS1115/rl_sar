@@ -9,17 +9,6 @@ RL_Real::RL_Real(int argc, char **argv)
 {
     bool wheel_mode = (argc > 2 && std::string(argv[2]) == "wheel");
 
-#if defined(USE_ROS1) && defined(USE_ROS)
-    ros::NodeHandle nh;
-    this->cmd_vel_subscriber = nh.subscribe<geometry_msgs::Twist>("/cmd_vel", 10, &RL_Real::CmdvelCallback, this);
-#elif defined(USE_ROS2) && defined(USE_ROS)
-    ros2_node = std::make_shared<rclcpp::Node>("rl_real_node");
-    this->cmd_vel_subscriber = ros2_node->create_subscription<geometry_msgs::msg::Twist>(
-        "/cmd_vel", rclcpp::SystemDefaultsQoS(),
-        [this] (const geometry_msgs::msg::Twist::SharedPtr msg) {this->CmdvelCallback(msg);}
-    );
-#endif
-
     // read params from yaml
     this->ang_vel_axis = "body";
     this->robot_name = wheel_mode ? "go2w" : "go2";
@@ -140,6 +129,7 @@ void RL_Real::GetState(RobotState<float> *state)
     if (this->unitree_joy.components.R1 && this->unitree_joy.components.left) this->control.SetGamepad(Input::Gamepad::RB_DPadLeft);
     if (this->unitree_joy.components.R1 && this->unitree_joy.components.right) this->control.SetGamepad(Input::Gamepad::RB_DPadRight);
     if (this->unitree_joy.components.L1 && this->unitree_joy.components.R1) this->control.SetGamepad(Input::Gamepad::LB_RB);
+    if (this->unitree_joy.components.L2 && this->unitree_joy.components.R2) this->control.SetGamepad(Input::Gamepad::L2_R2);
 
     this->control.x = this->joystick.ly();
     this->control.y = -this->joystick.lx();
@@ -216,13 +206,6 @@ void RL_Real::RunModel()
         this->episode_length_buf += 1;
         this->obs.ang_vel = this->robot_state.imu.gyroscope;
         this->obs.commands = {this->control.x, this->control.y, this->control.yaw};
-#if !defined(USE_CMAKE) && defined(USE_ROS)
-        if (this->control.navigation_mode)
-        {
-            this->obs.commands = {(float)this->cmd_vel.linear.x, (float)this->cmd_vel.linear.y, (float)this->cmd_vel.angular.z};
-
-        }
-#endif
         this->obs.base_quat = this->robot_state.imu.quaternion;
         this->obs.dof_pos = this->robot_state.motor_state.q;
         this->obs.dof_vel = this->robot_state.motor_state.dq;
@@ -415,26 +398,6 @@ void RL_Real::JoystickHandler(const void *message)
     this->unitree_joy.value = joystick.keys();
 }
 
-#if !defined(USE_CMAKE) && defined(USE_ROS)
-void RL_Real::CmdvelCallback(
-#if defined(USE_ROS1) && defined(USE_ROS)
-    const geometry_msgs::Twist::ConstPtr &msg
-#elif defined(USE_ROS2) && defined(USE_ROS)
-    const geometry_msgs::msg::Twist::SharedPtr msg
-#endif
-)
-{
-    this->cmd_vel = *msg;
-}
-#endif
-
-#if defined(USE_ROS1) && defined(USE_ROS)
-void signalHandler(int signum)
-{
-    ros::shutdown();
-    exit(0);
-}
-#elif defined(USE_CMAKE) || !defined(USE_ROS)
 // Signal handler for CMAKE mode
 volatile sig_atomic_t g_shutdown_requested = 0;
 void signalHandler(int signum)
@@ -442,7 +405,6 @@ void signalHandler(int signum)
     std::cout << LOGGER::INFO << "Received signal " << signum << ", shutting down..." << std::endl;
     g_shutdown_requested = 1;
 }
-#endif
 
 int main(int argc, char **argv)
 {
@@ -453,22 +415,10 @@ int main(int argc, char **argv)
     }
     ChannelFactory::Instance()->Init(0, argv[1]);
 
-#if defined(USE_ROS1) && defined(USE_ROS)
-    signal(SIGINT, signalHandler);
-    ros::init(argc, argv, "rl_sar");
-    RL_Real rl_sar(argc, argv);
-    ros::spin();
-#elif defined(USE_ROS2) && defined(USE_ROS)
-    rclcpp::init(argc, argv);
-    auto rl_sar = std::make_shared<RL_Real>(argc, argv);
-    rclcpp::spin(rl_sar->ros2_node);
-    rclcpp::shutdown();
-#elif defined(USE_CMAKE) || !defined(USE_ROS)
     signal(SIGINT, signalHandler);
     RL_Real rl_sar(argc, argv);
     while (!g_shutdown_requested) { sleep(1); }
     std::cout << LOGGER::INFO << "Exiting..." << std::endl;
-#endif
 
     return 0;
 }

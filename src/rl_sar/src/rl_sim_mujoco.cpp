@@ -79,7 +79,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
 
     this->mj_model = m;
     this->mj_data = d;
-    this->SetupSysJoystick("/dev/input/js0", 16); // 16 bits joystick
+    this->SetupSysJoystick(16);
 
     // read params from yaml
     this->ReadYaml(this->robot_name, "base.yaml");
@@ -224,16 +224,39 @@ void RL_Sim::RobotControl()
     this->SetCommand(&this->robot_command);
 }
 
-void RL_Sim::SetupSysJoystick(const std::string& device, int bits)
+
+bool RL_Sim::TryOpenSysJoystick(const std::string& device)
 {
-    this->sys_js = std::make_unique<Joystick>(device);
-    if (!this->sys_js->isFound())
+    auto joystick = std::make_unique<Joystick>(device);
+    if (!joystick->isFound())
     {
-        std::cout << LOGGER::ERROR << "Joystick [" << device << "] open failed." << std::endl;
-        // exit(1);
+        return false;
     }
 
+    this->sys_js = std::move(joystick);
+    this->sys_js_device = device;
+    this->sys_js_active = false;
+    std::fill(std::begin(this->sys_js_axis), std::end(this->sys_js_axis), 0);
+    std::cout << LOGGER::INFO << "Joystick connected: " << this->sys_js_device << std::endl;
+    return true;
+}
+
+void RL_Sim::SetupSysJoystick(int bits)
+{
     this->sys_js_max_value = (1 << (bits - 1));
+
+    for (int index = 0; index <= 9; ++index)
+    {
+        const std::string device = "/dev/input/js" + std::to_string(index);
+        if (this->TryOpenSysJoystick(device))
+        {
+            return;
+        }
+    }
+
+    this->sys_js.reset();
+    this->sys_js_device.clear();
+    std::cout << LOGGER::WARNING << "No joystick found in /dev/input/js0-9." << std::endl;
 }
 
 void RL_Sim::GetSysJoystick()
@@ -271,6 +294,13 @@ void RL_Sim::GetSysJoystick()
         }
     }
 
+    const bool left_trigger_pressed =
+        this->sys_js_button[6].pressed ||
+        this->sys_js_axis[2] > (this->sys_js_max_value / 2);
+    const bool right_trigger_pressed =
+        this->sys_js_button[7].pressed ||
+        this->sys_js_axis[5] > (this->sys_js_max_value / 2);
+
     if (this->sys_js_button[0].on_press) this->control.SetGamepad(Input::Gamepad::A);
     if (this->sys_js_button[1].on_press) this->control.SetGamepad(Input::Gamepad::B);
     if (this->sys_js_button[2].on_press) this->control.SetGamepad(Input::Gamepad::X);
@@ -304,6 +334,7 @@ void RL_Sim::GetSysJoystick()
     if (this->sys_js_button[5].pressed && this->sys_js_axis[6] > 0) this->control.SetGamepad(Input::Gamepad::RB_DPadRight);
     if (this->sys_js_button[5].pressed && this->sys_js_axis[6] < 0) this->control.SetGamepad(Input::Gamepad::RB_DPadLeft);
     if (this->sys_js_button[4].pressed && this->sys_js_button[5].on_press) this->control.SetGamepad(Input::Gamepad::LB_RB);
+    if (left_trigger_pressed && right_trigger_pressed) this->control.SetGamepad(Input::Gamepad::L2_R2);
 
     float ly = -float(this->sys_js_axis[1]) / float(this->sys_js_max_value);
     float lx = -float(this->sys_js_axis[0]) / float(this->sys_js_max_value);
