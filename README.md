@@ -27,7 +27,8 @@ Build standalone binaries with MuJoCo support:
 ./build.sh -mj
 ```
 
-`./build.sh -mj` keeps only `go2_description` and `go2w_description` under `src/rl_sar_zoo`.
+`./build.sh -mj` uses the bundled `src/rl_sar_zoo` tree in this repository.
+The build no longer clones robot descriptions on demand.
 
 ## Run
 
@@ -56,3 +57,4 @@ Example:
 
 - MuJoCo joystick discovery scans `/dev/input/js0` through `/dev/input/js9`.
 - Policies kept in this repo are only under [`policy/go2`](/home/ms/rl_sar/policy/go2) and [`policy/go2w`](/home/ms/rl_sar/policy/go2w).
+- `src/rl_sar_zoo` should be committed with this repository, containing `go2_description` and `go2w_description`.
