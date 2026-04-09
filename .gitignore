@@ -12,6 +12,7 @@
 /.idea/
 /.vscode/
 /.codex
+/src/rl_sar_zoo/
 *.swp
 *.swo
 .DS_Store
