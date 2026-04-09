@@ -587,6 +587,7 @@ std::vector<float> RL_Sim::Forward()
     }
 }
 
+#ifdef PLOT
 void RL_Sim::Plot()
 {
     this->plot_t.erase(this->plot_t.begin());
@@ -604,9 +605,9 @@ void RL_Sim::Plot()
         plt::named_plot("_target_joint_pos", this->plot_t, this->plot_target_joint_pos[i], "b");
         plt::xlim(this->plot_t.front(), this->plot_t.back());
     }
-    // plt::legend();
     plt::pause(0.01);
 }
+#endif
 
 // Signal handler for Ctrl+C
 void signalHandler(int signum)

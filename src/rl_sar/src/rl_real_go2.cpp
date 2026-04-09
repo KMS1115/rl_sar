@@ -271,6 +271,7 @@ std::vector<float> RL_Real::Forward()
     }
 }
 
+#ifdef PLOT
 void RL_Real::Plot()
 {
     this->plot_t.erase(this->plot_t.begin());
@@ -288,9 +289,9 @@ void RL_Real::Plot()
         plt::named_plot("_target_joint_pos", this->plot_t, this->plot_target_joint_pos[i], "b");
         plt::xlim(this->plot_t.front(), this->plot_t.back());
     }
-    // plt::legend();
     plt::pause(0.0001);
 }
+#endif
 
 uint32_t RL_Real::Crc32Core(uint32_t *ptr, uint32_t len)
 {

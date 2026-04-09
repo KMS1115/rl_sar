@@ -27,8 +27,10 @@
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 #include <csignal>
 
+#ifdef PLOT
 #include "matplotlibcpp.h"
 namespace plt = matplotlibcpp;
+#endif
 
 using namespace unitree::common;
 using namespace unitree::robot;

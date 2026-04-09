@@ -16,6 +16,7 @@ endif()
 set(SYSTEM_TYPE ${CMAKE_SYSTEM_NAME})
 set(USE_CMAKE ON CACHE BOOL "Build with standalone CMake")
 set(USE_MUJOCO OFF CACHE BOOL "Build with MuJoCo simulator support")
+option(ENABLE_PLOT "Enable matplotlib-based debug plots" OFF)
 add_compile_definitions(USE_CMAKE)
 
 get_filename_component(PROJECT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
@@ -123,11 +124,14 @@ endif()
 
 find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+if(ENABLE_PLOT)
+    add_compile_definitions(PLOT)
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-if(Python3_LIBRARIES)
-    get_filename_component(PYTHON_LIB_DIR "${Python3_LIBRARIES}" DIRECTORY)
-    list(APPEND CMAKE_INSTALL_RPATH "${PYTHON_LIB_DIR}")
+    if(Python3_LIBRARIES)
+        get_filename_component(PYTHON_LIB_DIR "${Python3_LIBRARIES}" DIRECTORY)
+        list(APPEND CMAKE_INSTALL_RPATH "${PYTHON_LIB_DIR}")
+    endif()
 endif()
 
 if(SYSTEM_TYPE STREQUAL "Linux")
@@ -190,15 +194,20 @@ add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 target_link_libraries(rl_sdk PUBLIC
     motion_loader
     inference_runtime
-    Python3::Python
-    Python3::Module
     TBB::tbb
 )
-find_package(Python3 COMPONENTS NumPy QUIET)
-if(Python3_NumPy_FOUND)
-    target_link_libraries(rl_sdk PUBLIC Python3::NumPy)
-else()
-    target_compile_definitions(rl_sdk PUBLIC WITHOUT_NUMPY)
+
+if(ENABLE_PLOT)
+    target_link_libraries(rl_sdk PUBLIC
+        Python3::Python
+        Python3::Module
+    )
+    find_package(Python3 COMPONENTS NumPy QUIET)
+    if(Python3_NumPy_FOUND)
+        target_link_libraries(rl_sdk PUBLIC Python3::NumPy)
+    else()
+        target_compile_definitions(rl_sdk PUBLIC WITHOUT_NUMPY)
+    endif()
 endif()
 
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)

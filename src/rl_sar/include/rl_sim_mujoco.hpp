@@ -31,8 +31,10 @@
 #include "joystick.hh"
 #include "mujoco_utils.hpp"
 
+#ifdef PLOT
 #include "matplotlibcpp.h"
 namespace plt = matplotlibcpp;
+#endif
 
 class Button
 {
