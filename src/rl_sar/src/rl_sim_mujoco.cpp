@@ -5,6 +5,66 @@
 
 #include "rl_sim_mujoco.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <vector>
+
+namespace
+{
+std::string ToLower(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
+
+bool ContainsAny(const std::string& text, const std::vector<std::string>& tokens)
+{
+    return std::any_of(tokens.begin(), tokens.end(), [&](const std::string& token) {
+        return text.find(token) != std::string::npos;
+    });
+}
+
+bool IsPointerLikeDevice(const std::string& device_name)
+{
+    const std::string lowered = ToLower(device_name);
+    static const std::vector<std::string> kBlockedTokens = {
+        "mouse",
+        "touchpad",
+        "trackpad",
+        "keyboard",
+        "consumer control",
+        "sleep button",
+        "power button"
+    };
+    return ContainsAny(lowered, kBlockedTokens);
+}
+
+bool IsLikelyGamepad(const std::string& device_name, unsigned char axis_count, unsigned char button_count)
+{
+    const std::string lowered = ToLower(device_name);
+    static const std::vector<std::string> kPreferredTokens = {
+        "controller",
+        "gamepad",
+        "joystick",
+        "xbox",
+        "dualshock",
+        "dualsense",
+        "8bitdo",
+        "switch pro",
+        "steam controller"
+    };
+
+    if (ContainsAny(lowered, kPreferredTokens))
+    {
+        return true;
+    }
+
+    return axis_count >= 4 && button_count >= 8;
+}
+}
+
 RL_Sim* RL_Sim::instance = nullptr;
 
 RL_Sim::RL_Sim(int argc, char **argv)
@@ -233,11 +293,37 @@ bool RL_Sim::TryOpenSysJoystick(const std::string& device)
         return false;
     }
 
+    const char* forced_device = std::getenv("RL_SIM_JOYSTICK_DEVICE");
+    if (forced_device && device != forced_device)
+    {
+        return false;
+    }
+
+    const char* preferred_name = std::getenv("RL_SIM_JOYSTICK_NAME");
+    const std::string device_name = joystick->name().empty() ? "unknown" : joystick->name();
+    if (preferred_name)
+    {
+        const std::string preferred_name_lower = ToLower(preferred_name);
+        if (ToLower(device_name).find(preferred_name_lower) == std::string::npos)
+        {
+            return false;
+        }
+    }
+
+    if (IsPointerLikeDevice(device_name))
+    {
+        std::cout << LOGGER::INFO << "Skipping non-gamepad device: " << device
+                  << " [" << device_name << "]" << std::endl;
+        return false;
+    }
+
     this->sys_js = std::move(joystick);
     this->sys_js_device = device;
     this->sys_js_active = false;
     std::fill(std::begin(this->sys_js_axis), std::end(this->sys_js_axis), 0);
-    std::cout << LOGGER::INFO << "Joystick connected: " << this->sys_js_device << std::endl;
+    std::cout << LOGGER::INFO << "Joystick connected: " << this->sys_js_device
+              << " [" << device_name << ", axes=" << int(this->sys_js->axisCount())
+              << ", buttons=" << int(this->sys_js->buttonCount()) << "]" << std::endl;
     return true;
 }
 
@@ -245,18 +331,80 @@ void RL_Sim::SetupSysJoystick(int bits)
 {
     this->sys_js_max_value = (1 << (bits - 1));
 
+    const char* forced_device = std::getenv("RL_SIM_JOYSTICK_DEVICE");
+    if (forced_device)
+    {
+        if (this->TryOpenSysJoystick(forced_device))
+        {
+            return;
+        }
+
+        std::cout << LOGGER::WARNING << "Requested joystick device not usable: "
+                  << forced_device << std::endl;
+    }
+
+    std::vector<std::string> fallback_devices;
     for (int index = 0; index <= 9; ++index)
     {
         const std::string device = "/dev/input/js" + std::to_string(index);
+        auto joystick = std::make_unique<Joystick>(device);
+        if (!joystick->isFound())
+        {
+            continue;
+        }
+
+        const std::string device_name = joystick->name().empty() ? "unknown" : joystick->name();
+        if (IsPointerLikeDevice(device_name))
+        {
+            std::cout << LOGGER::INFO << "Skipping non-gamepad device: " << device
+                      << " [" << device_name << "]" << std::endl;
+            continue;
+        }
+
+        const char* preferred_name = std::getenv("RL_SIM_JOYSTICK_NAME");
+        if (preferred_name)
+        {
+            const std::string preferred_name_lower = ToLower(preferred_name);
+            if (ToLower(device_name).find(preferred_name_lower) == std::string::npos)
+            {
+                continue;
+            }
+        }
+
+        if (IsLikelyGamepad(device_name, joystick->axisCount(), joystick->buttonCount()))
+        {
+            this->sys_js = std::move(joystick);
+            this->sys_js_device = device;
+            this->sys_js_active = false;
+            std::fill(std::begin(this->sys_js_axis), std::end(this->sys_js_axis), 0);
+            std::cout << LOGGER::INFO << "Joystick connected: " << this->sys_js_device
+                      << " [" << device_name << ", axes=" << int(this->sys_js->axisCount())
+                      << ", buttons=" << int(this->sys_js->buttonCount()) << "]" << std::endl;
+            return;
+        }
+
+        fallback_devices.push_back(device);
+        std::cout << LOGGER::INFO << "Ignoring low-confidence joystick candidate: " << device
+                  << " [" << device_name << ", axes=" << int(joystick->axisCount())
+                  << ", buttons=" << int(joystick->buttonCount()) << "]" << std::endl;
+    }
+
+    for (const auto& device : fallback_devices)
+    {
         if (this->TryOpenSysJoystick(device))
         {
+            std::cout << LOGGER::WARNING << "Falling back to joystick with weak gamepad signature: "
+                      << device << std::endl;
             return;
         }
     }
 
     this->sys_js.reset();
     this->sys_js_device.clear();
-    std::cout << LOGGER::WARNING << "No joystick found in /dev/input/js0-9." << std::endl;
+    std::cout << LOGGER::WARNING
+              << "No joystick found in /dev/input/js0-9. "
+              << "Use RL_SIM_JOYSTICK_DEVICE=/dev/input/jsN or RL_SIM_JOYSTICK_NAME=<substring> to force one."
+              << std::endl;
 }
 
 void RL_Sim::GetSysJoystick()

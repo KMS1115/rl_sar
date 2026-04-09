@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <fcntl.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 JoystickEvent::JoystickEvent(const js_event& event)
@@ -25,6 +26,19 @@ bool JoystickEvent::isAxis() const
 Joystick::Joystick(const std::string& device_path)
 {
     fd_ = open(device_path.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd_ < 0)
+    {
+        return;
+    }
+
+    char raw_name[128] = {};
+    if (ioctl(fd_, JSIOCGNAME(sizeof(raw_name)), raw_name) >= 0)
+    {
+        name_ = raw_name;
+    }
+
+    ioctl(fd_, JSIOCGAXES, &axis_count_);
+    ioctl(fd_, JSIOCGBUTTONS, &button_count_);
 }
 
 Joystick::~Joystick()
@@ -61,4 +75,19 @@ bool Joystick::sample(JoystickEvent* event)
     }
 
     return false;
+}
+
+const std::string& Joystick::name() const
+{
+    return name_;
+}
+
+unsigned char Joystick::axisCount() const
+{
+    return axis_count_;
+}
+
+unsigned char Joystick::buttonCount() const
+{
+    return button_count_;
 }

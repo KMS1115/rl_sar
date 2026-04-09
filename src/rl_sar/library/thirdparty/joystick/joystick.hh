@@ -28,9 +28,15 @@ public:
 
     bool isFound() const;
     bool sample(JoystickEvent* event);
+    const std::string& name() const;
+    unsigned char axisCount() const;
+    unsigned char buttonCount() const;
 
 private:
     int fd_ = -1;
+    std::string name_;
+    unsigned char axis_count_ = 0;
+    unsigned char button_count_ = 0;
 };
 
 #endif
