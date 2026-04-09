@@ -11,6 +11,7 @@
 # Editor / OS
 /.idea/
 /.vscode/
+/.codex
 *.swp
 *.swo
 .DS_Store
