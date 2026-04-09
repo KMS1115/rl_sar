@@ -57,4 +57,4 @@ Example:
 
 - MuJoCo joystick discovery scans `/dev/input/js0` through `/dev/input/js9`.
 - Policies kept in this repo are only under [`policy/go2`](/home/ms/rl_sar/policy/go2) and [`policy/go2w`](/home/ms/rl_sar/policy/go2w).
-- `src/rl_sar_zoo` should be committed with this repository, containing `go2_description` and `go2w_description`.
+- `src/rl_sar_zoo` should be committed with this repository and now keeps only the MuJoCo `mjcf` assets required by `go2_description` and `go2w_description`.
