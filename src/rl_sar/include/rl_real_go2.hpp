@@ -106,7 +106,8 @@ private:
     ChannelPublisherPtr<unitree_go::msg::dds_::LowCmd_> lowcmd_publisher;
     ChannelSubscriberPtr<unitree_go::msg::dds_::LowState_> lowstate_subscriber;
     ChannelSubscriberPtr<unitree_go::msg::dds_::WirelessController_> joystick_subscriber;
-    xKeySwitchUnion unitree_joy;
+    xKeySwitchUnion unitree_joy{};
+    xKeySwitchUnion previous_unitree_joy{};
 
     // others
     std::vector<float> mapped_joint_positions;

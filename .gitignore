@@ -6,6 +6,12 @@
 /logs/
 /.catkin_tools/
 /cmake_build/
+/cmake_build*/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/Makefile
+/cmake_install.cmake
 /compile_commands.json
 
 # Editor / OS

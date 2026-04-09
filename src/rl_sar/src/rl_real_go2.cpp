@@ -96,40 +96,60 @@ RL_Real::~RL_Real()
 
 void RL_Real::GetState(RobotState<float> *state)
 {
-    if (this->unitree_joy.components.A) this->control.SetGamepad(Input::Gamepad::A);
-    if (this->unitree_joy.components.B) this->control.SetGamepad(Input::Gamepad::B);
-    if (this->unitree_joy.components.X) this->control.SetGamepad(Input::Gamepad::X);
-    if (this->unitree_joy.components.Y) this->control.SetGamepad(Input::Gamepad::Y);
-    if (this->unitree_joy.components.L1) this->control.SetGamepad(Input::Gamepad::LB);
-    if (this->unitree_joy.components.R1) this->control.SetGamepad(Input::Gamepad::RB);
-    if (this->unitree_joy.components.F1) this->control.SetGamepad(Input::Gamepad::LStick);
-    if (this->unitree_joy.components.F2) this->control.SetGamepad(Input::Gamepad::RStick);
-    if (this->unitree_joy.components.up) this->control.SetGamepad(Input::Gamepad::DPadUp);
-    if (this->unitree_joy.components.down) this->control.SetGamepad(Input::Gamepad::DPadDown);
-    if (this->unitree_joy.components.left) this->control.SetGamepad(Input::Gamepad::DPadLeft);
-    if (this->unitree_joy.components.right) this->control.SetGamepad(Input::Gamepad::DPadRight);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.A) this->control.SetGamepad(Input::Gamepad::LB_A);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.B) this->control.SetGamepad(Input::Gamepad::LB_B);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.X) this->control.SetGamepad(Input::Gamepad::LB_X);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.Y) this->control.SetGamepad(Input::Gamepad::LB_Y);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.F1) this->control.SetGamepad(Input::Gamepad::LB_LStick);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.F2) this->control.SetGamepad(Input::Gamepad::LB_RStick);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.up) this->control.SetGamepad(Input::Gamepad::LB_DPadUp);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.down) this->control.SetGamepad(Input::Gamepad::LB_DPadDown);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.left) this->control.SetGamepad(Input::Gamepad::LB_DPadLeft);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.right) this->control.SetGamepad(Input::Gamepad::LB_DPadRight);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.A) this->control.SetGamepad(Input::Gamepad::RB_A);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.B) this->control.SetGamepad(Input::Gamepad::RB_B);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.X) this->control.SetGamepad(Input::Gamepad::RB_X);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.Y) this->control.SetGamepad(Input::Gamepad::RB_Y);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.F1) this->control.SetGamepad(Input::Gamepad::RB_LStick);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.F2) this->control.SetGamepad(Input::Gamepad::RB_RStick);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.up) this->control.SetGamepad(Input::Gamepad::RB_DPadUp);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.down) this->control.SetGamepad(Input::Gamepad::RB_DPadDown);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.left) this->control.SetGamepad(Input::Gamepad::RB_DPadLeft);
-    if (this->unitree_joy.components.R1 && this->unitree_joy.components.right) this->control.SetGamepad(Input::Gamepad::RB_DPadRight);
-    if (this->unitree_joy.components.L1 && this->unitree_joy.components.R1) this->control.SetGamepad(Input::Gamepad::LB_RB);
-    if (this->unitree_joy.components.L2 && this->unitree_joy.components.R2) this->control.SetGamepad(Input::Gamepad::L2_R2);
+    const auto &curr = this->unitree_joy.components;
+    const auto &prev = this->previous_unitree_joy.components;
+
+    const bool a_on_press = curr.A && !prev.A;
+    const bool b_on_press = curr.B && !prev.B;
+    const bool x_on_press = curr.X && !prev.X;
+    const bool y_on_press = curr.Y && !prev.Y;
+    const bool l1_on_press = curr.L1 && !prev.L1;
+    const bool r1_on_press = curr.R1 && !prev.R1;
+    const bool f1_on_press = curr.F1 && !prev.F1;
+    const bool f2_on_press = curr.F2 && !prev.F2;
+    const bool up_on_press = curr.up && !prev.up;
+    const bool down_on_press = curr.down && !prev.down;
+    const bool left_on_press = curr.left && !prev.left;
+    const bool right_on_press = curr.right && !prev.right;
+    const bool l2r2_on_press = curr.L2 && curr.R2 && !(prev.L2 && prev.R2);
+
+    if (a_on_press) this->control.SetGamepad(Input::Gamepad::A);
+    if (b_on_press) this->control.SetGamepad(Input::Gamepad::B);
+    if (x_on_press) this->control.SetGamepad(Input::Gamepad::X);
+    if (y_on_press) this->control.SetGamepad(Input::Gamepad::Y);
+    if (l1_on_press) this->control.SetGamepad(Input::Gamepad::LB);
+    if (r1_on_press) this->control.SetGamepad(Input::Gamepad::RB);
+    if (f1_on_press) this->control.SetGamepad(Input::Gamepad::LStick);
+    if (f2_on_press) this->control.SetGamepad(Input::Gamepad::RStick);
+    if (up_on_press) this->control.SetGamepad(Input::Gamepad::DPadUp);
+    if (down_on_press) this->control.SetGamepad(Input::Gamepad::DPadDown);
+    if (left_on_press) this->control.SetGamepad(Input::Gamepad::DPadLeft);
+    if (right_on_press) this->control.SetGamepad(Input::Gamepad::DPadRight);
+
+    if (curr.L1 && a_on_press) this->control.SetGamepad(Input::Gamepad::LB_A);
+    if (curr.L1 && b_on_press) this->control.SetGamepad(Input::Gamepad::LB_B);
+    if (curr.L1 && x_on_press) this->control.SetGamepad(Input::Gamepad::LB_X);
+    if (curr.L1 && y_on_press) this->control.SetGamepad(Input::Gamepad::LB_Y);
+    if (curr.L1 && f1_on_press) this->control.SetGamepad(Input::Gamepad::LB_LStick);
+    if (curr.L1 && f2_on_press) this->control.SetGamepad(Input::Gamepad::LB_RStick);
+    if (curr.L1 && up_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadUp);
+    if (curr.L1 && down_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadDown);
+    if (curr.L1 && left_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadLeft);
+    if (curr.L1 && right_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadRight);
+
+    if (curr.R1 && a_on_press) this->control.SetGamepad(Input::Gamepad::RB_A);
+    if (curr.R1 && b_on_press) this->control.SetGamepad(Input::Gamepad::RB_B);
+    if (curr.R1 && x_on_press) this->control.SetGamepad(Input::Gamepad::RB_X);
+    if (curr.R1 && y_on_press) this->control.SetGamepad(Input::Gamepad::RB_Y);
+    if (curr.R1 && f1_on_press) this->control.SetGamepad(Input::Gamepad::RB_LStick);
+    if (curr.R1 && f2_on_press) this->control.SetGamepad(Input::Gamepad::RB_RStick);
+    if (curr.R1 && up_on_press) this->control.SetGamepad(Input::Gamepad::RB_DPadUp);
+    if (curr.R1 && down_on_press) this->control.SetGamepad(Input::Gamepad::RB_DPadDown);
+    if (curr.R1 && left_on_press) this->control.SetGamepad(Input::Gamepad::RB_DPadLeft);
+    if (curr.R1 && right_on_press) this->control.SetGamepad(Input::Gamepad::RB_DPadRight);
+
+    if (curr.L1 && curr.R1 && !(prev.L1 && prev.R1)) this->control.SetGamepad(Input::Gamepad::LB_RB);
+    if (l2r2_on_press) this->control.SetGamepad(Input::Gamepad::L2_R2);
 
     this->control.x = this->joystick.ly();
     this->control.y = -this->joystick.lx();
@@ -396,6 +416,7 @@ void RL_Real::LowStateMessageHandler(const void *message)
 void RL_Real::JoystickHandler(const void *message)
 {
     joystick = *(unitree_go::msg::dds_::WirelessController_ *)message;
+    this->previous_unitree_joy = this->unitree_joy;
     this->unitree_joy.value = joystick.keys();
 }
 
