@@ -35,16 +35,22 @@ The build no longer clones robot descriptions on demand.
 Real robot:
 
 ```bash
-./cmake_build/bin/rl_real_go2 <NETWORK_INTERFACE> [wheel]
+./cmake_build/bin/rl_real_go2 <NETWORK_INTERFACE> [wheel] [config_name]
 ```
 
 - no `wheel`: `go2`
 - `wheel`: `go2w`
+- default `config_name`: `default`
+- available examples:
+  - `go2/default`
+  - `go2/dreamwaq`
+  - `go2w/default`
+  - `go2w/dreamwaq`
 
 MuJoCo:
 
 ```bash
-./cmake_build/bin/rl_sim_mujoco <go2|go2w> <scene_name>
+./cmake_build/bin/rl_sim_mujoco <go2|go2w> <scene_name> [config_name]
 ```
 
 Example:
@@ -52,6 +58,39 @@ Example:
 ```bash
 ./cmake_build/bin/rl_sim_mujoco go2 scene
 ```
+
+```bash
+./cmake_build/bin/rl_sim_mujoco go2 scene dreamwaq
+```
+
+```bash
+./cmake_build/bin/rl_sim_mujoco go2w scene
+```
+
+Real-robot examples:
+
+```bash
+./cmake_build/bin/rl_real_go2 eth0
+```
+
+```bash
+./cmake_build/bin/rl_real_go2 eth0 dreamwaq
+```
+
+```bash
+./cmake_build/bin/rl_real_go2 eth0 wheel
+```
+
+Policy/config lookup:
+
+- The runtime always loads `policy/<robot_name>/base.yaml` first.
+- Then it loads `policy/<robot_name>/<config_name>/config.yaml`.
+- Then it loads `policy/<robot_name>/<config_name>/policy.onnx`.
+- Examples:
+  - `go2 + default` -> `policy/go2/default/`
+  - `go2 + dreamwaq` -> `policy/go2/dreamwaq/`
+  - `go2w + default` -> `policy/go2w/default/`
+  - `go2w + dreamwaq` -> `policy/go2w/dreamwaq/`
 
 ## Notes
 

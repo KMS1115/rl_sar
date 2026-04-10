@@ -74,13 +74,14 @@ RL_Sim::RL_Sim(int argc, char **argv)
 
     if (argc < 3)
     {
-        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " robot_name scene_name" << std::endl;
+        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " robot_name scene_name [config_name]" << std::endl;
         throw std::runtime_error("Invalid arguments");
     }
     else
     {
         this->robot_name = argv[1];
         this->scene_name = argv[2];
+        this->config_name = (argc > 3) ? argv[3] : "default";
     }
 
     this->ang_vel_axis = "body";
@@ -187,7 +188,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
     this->loop_plot->start();
 #endif
 #ifdef CSV_LOGGER
-    this->CSVInit(this->robot_name);
+    this->CSVInit(this->robot_name + "/" + this->config_name);
 #endif
 
     std::cout << LOGGER::INFO << "RL_Sim start" << std::endl;

@@ -7,7 +7,20 @@
 
 RL_Real::RL_Real(int argc, char **argv)
 {
-    bool wheel_mode = (argc > 2 && std::string(argv[2]) == "wheel");
+    bool wheel_mode = false;
+    this->config_name = "default";
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if (arg == "wheel")
+        {
+            wheel_mode = true;
+        }
+        else
+        {
+            this->config_name = arg;
+        }
+    }
 
     // read params from yaml
     this->ang_vel_axis = "body";
@@ -79,7 +92,7 @@ RL_Real::RL_Real(int argc, char **argv)
     this->loop_plot->start();
 #endif
 #ifdef CSV_LOGGER
-    this->CSVInit(this->robot_name);
+    this->CSVInit(this->robot_name + "/" + this->config_name);
 #endif
 }
 
