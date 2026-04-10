@@ -116,7 +116,7 @@ int main(int argc, char** argv)
     if (argc < 5)
     {
         std::cout << "Usage: " << argv[0] << " <model_path.onnx> <onnx> <use_abstraction> <input_size> [iterations]" << std::endl;
-        std::cout << "Example: " << argv[0] << " policy/go2/robot_lab/policy.onnx onnx 1 45 100" << std::endl;
+        std::cout << "Example: " << argv[0] << " policy/go2/default/policy.onnx onnx 1 45 100" << std::endl;
         return 1;
     }
 

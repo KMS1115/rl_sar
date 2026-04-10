@@ -1,12 +1,12 @@
 # Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
-go2/robot_lab:
+go2/dreamwaq:
   model_name: "policy.onnx"
-  num_observations: 45
+  num_observations: 225
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
-  observations_history: []  # 0 is the latest observation
-  observations_history_priority: "time"  # "time" or "term" priority
+  observations_history: [4, 3, 2, 1, 0]
+  observations_history_priority: "term"
   clip_obs: 100.0
   clip_actions_lower: [-100.0, -100.0, -100.0,
                        -100.0, -100.0, -100.0,
