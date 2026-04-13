@@ -46,6 +46,12 @@ temp_extract*/
 !/library/inference_runtime/archives/*.tar.gz
 /library/inference_runtime/onnxruntime-*/
 /library/inference_runtime/temp_extract*/
+/src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2/thirdparty/lib/aarch64/
+/src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2/thirdparty/lib/x86_64/
+!/src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2/thirdparty/lib/archives/
+!/src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2/thirdparty/lib/archives/*.zip
+!/src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2/thirdparty/lib/archives/*.tgz
+!/src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2/thirdparty/lib/archives/*.tar.gz
 
 # Runtime outputs
 /policy/**/motor.csv

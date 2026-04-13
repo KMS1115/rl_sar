@@ -39,6 +39,15 @@ Offline ONNX Runtime setup:
 - `build.sh` extracts the matching archive automatically before CMake runs.
 - Do not commit expanded `library/inference_runtime/onnxruntime-*` directories anymore.
 
+Offline Unitree SDK third-party runtime setup:
+
+- Keep the cached DDS runtime archives under `src/rl_sar/library/thirdparty/robot_sdk/unitree/unitree_sdk2/thirdparty/lib/archives/`.
+- Linux examples:
+  - `unitree-sdk2-thirdparty-aarch64.tgz`
+  - `unitree-sdk2-thirdparty-x86_64.tgz`
+- `build.sh` restores the matching `thirdparty/lib/<arch>/` tree automatically before CMake runs.
+- Do not commit expanded `thirdparty/lib/aarch64` or `thirdparty/lib/x86_64` directories anymore.
+
 ## Run
 
 Real robot:

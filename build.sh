@@ -16,6 +16,18 @@ setup_inference_runtime() {
     fi
 }
 
+setup_unitree_thirdparty_runtime() {
+    print_header "[Setting up Unitree Third-Party Runtime]"
+    local setup_script="${SCRIPT_DIR}/scripts/setup_unitree_thirdparty_runtime.sh"
+
+    if [ -f "$setup_script" ]; then
+        bash "$setup_script" || {
+            print_error "Failed to setup Unitree third-party runtime"
+            exit 1
+        }
+    fi
+}
+
 setup_mujoco() {
     print_header "[Setting up MuJoCo]"
     local download_script="${SCRIPT_DIR}/scripts/download_mujoco.sh"
@@ -107,6 +119,7 @@ main() {
     fi
 
     setup_inference_runtime
+    setup_unitree_thirdparty_runtime
 
     if [ "$mujoco_mode" = true ]; then
         setup_robot_descriptions
