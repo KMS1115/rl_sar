@@ -40,6 +40,12 @@ __pycache__/
 *.tgz
 *.tar.gz
 temp_extract*/
+!/library/inference_runtime/archives/
+!/library/inference_runtime/archives/*.zip
+!/library/inference_runtime/archives/*.tgz
+!/library/inference_runtime/archives/*.tar.gz
+/library/inference_runtime/onnxruntime-*/
+/library/inference_runtime/temp_extract*/
 
 # Runtime outputs
 /policy/**/motor.csv

@@ -30,6 +30,15 @@ Build standalone binaries with MuJoCo support:
 `./build.sh -mj` uses the bundled `src/rl_sar_zoo` tree in this repository.
 The build no longer clones robot descriptions on demand.
 
+Offline ONNX Runtime setup:
+
+- Keep the official ONNX Runtime archives under `library/inference_runtime/archives/`.
+- Linux examples:
+  - `onnxruntime-linux-aarch64-1.22.0.tgz`
+  - `onnxruntime-linux-x64-1.22.0.tgz`
+- `build.sh` extracts the matching archive automatically before CMake runs.
+- Do not commit expanded `library/inference_runtime/onnxruntime-*` directories anymore.
+
 ## Run
 
 Real robot:

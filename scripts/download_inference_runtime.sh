@@ -22,29 +22,48 @@ else
 fi
 
 MODEL_INTERFACE_DIR="${PROJECT_ROOT}/${TARGET_DIR}"
+ARCHIVE_DIR="${MODEL_INTERFACE_DIR}/archives"
 mkdir -p "${MODEL_INTERFACE_DIR}"
+mkdir -p "${ARCHIVE_DIR}"
 
 ONNXRUNTIME_VERSION="1.22.0"
 
-case "${OS_TYPE}" in
-    Linux)
-        if [ "${ARCH_TYPE}" = "aarch64" ]; then
-            ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-aarch64"
-        else
-            ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-x64"
-        fi
-        ;;
-    Darwin)
-        if [ "${ARCH_TYPE}" = "arm64" ]; then
-            ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-macos-arm64"
-        else
-            ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-macos-x64"
-        fi
-        ;;
-    *)
-        ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime"
-        ;;
-esac
+resolve_onnxruntime_package() {
+    case "${OS_TYPE}" in
+        Linux)
+            if [ "${ARCH_TYPE}" = "aarch64" ]; then
+                ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-aarch64"
+                ONNXRUNTIME_ARCHIVE_NAME="onnxruntime-linux-aarch64-${ONNXRUNTIME_VERSION}.tgz"
+            else
+                ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-x64"
+                ONNXRUNTIME_ARCHIVE_NAME="onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
+            fi
+            ;;
+        Darwin)
+            if [ "${ARCH_TYPE}" = "arm64" ]; then
+                ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-macos-arm64"
+                ONNXRUNTIME_ARCHIVE_NAME="onnxruntime-osx-arm64-${ONNXRUNTIME_VERSION}.tgz"
+            else
+                ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime-macos-x64"
+                ONNXRUNTIME_ARCHIVE_NAME="onnxruntime-osx-x86_64-${ONNXRUNTIME_VERSION}.tgz"
+            fi
+            ;;
+        MINGW*|MSYS*)
+            ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime"
+            ONNXRUNTIME_ARCHIVE_NAME="onnxruntime-win-x64-${ONNXRUNTIME_VERSION}.zip"
+            ;;
+        *)
+            ONNXRUNTIME_DIR="${MODEL_INTERFACE_DIR}/onnxruntime"
+            ONNXRUNTIME_ARCHIVE_NAME=""
+            ;;
+    esac
+
+    if [ -n "${ONNXRUNTIME_ARCHIVE_NAME}" ]; then
+        ONNXRUNTIME_DOWNLOAD_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/${ONNXRUNTIME_ARCHIVE_NAME}"
+    else
+        ONNXRUNTIME_DOWNLOAD_URL=""
+    fi
+}
 
 is_onnxruntime_valid() {
     if [ ! -d "$ONNXRUNTIME_DIR" ]; then
@@ -58,53 +77,83 @@ is_onnxruntime_valid() {
     return 0
 }
 
-download_onnxruntime() {
-    local url=""
-    local archive_name=""
+extract_onnxruntime_archive() {
+    local archive_path="$1"
 
-    case "${OS_TYPE}" in
-        Darwin)
-            if [ "${ARCH_TYPE}" = "arm64" ]; then
-                url="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-osx-arm64-${ONNXRUNTIME_VERSION}.tgz"
-                archive_name="onnxruntime-osx-arm64-${ONNXRUNTIME_VERSION}.tgz"
-            else
-                url="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-osx-x86_64-${ONNXRUNTIME_VERSION}.tgz"
-                archive_name="onnxruntime-osx-x86_64-${ONNXRUNTIME_VERSION}.tgz"
-            fi
-            ;;
-        Linux)
-            if [ "${ARCH_TYPE}" = "aarch64" ]; then
-                url="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-aarch64-${ONNXRUNTIME_VERSION}.tgz"
-                archive_name="onnxruntime-linux-aarch64-${ONNXRUNTIME_VERSION}.tgz"
-            else
-                url="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
-                archive_name="onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz"
-            fi
-            ;;
-        MINGW*|MSYS*)
-            url="https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-win-x64-${ONNXRUNTIME_VERSION}.zip"
-            archive_name="onnxruntime-win-x64-${ONNXRUNTIME_VERSION}.zip"
-            ;;
-        *)
-            print_error "Unsupported OS: ${OS_TYPE}"
+    print_info "Extracting ONNX Runtime from ${archive_path}..."
+
+    local temp_dir="${MODEL_INTERFACE_DIR}/temp_extract"
+    rm -rf "${temp_dir}"
+    mkdir -p "${temp_dir}"
+
+    if [[ "${archive_path}" == *.tgz ]]; then
+        tar -xzf "${archive_path}" -C "${temp_dir}" || {
+            print_error "Extraction failed"
+            rm -rf "${temp_dir}"
             exit 1
-            ;;
-    esac
+        }
+    else
+        unzip -o -q "${archive_path}" -d "${temp_dir}" || {
+            print_error "Extraction failed"
+            rm -rf "${temp_dir}"
+            exit 1
+        }
+    fi
 
-    local archive_path="${MODEL_INTERFACE_DIR}/${archive_name}"
+    local extracted_dir
+    extracted_dir=$(find "${temp_dir}" -maxdepth 1 -type d -name "onnxruntime-*" | head -n 1)
+    if [ -z "${extracted_dir}" ] || [ ! -d "${extracted_dir}" ]; then
+        print_error "Incorrect directory structure after extraction"
+        rm -rf "${temp_dir}"
+        exit 1
+    fi
+
+    rm -rf "${ONNXRUNTIME_DIR}"
+    mv "${extracted_dir}" "${ONNXRUNTIME_DIR}"
+
+    rm -rf "${temp_dir}"
+
+    print_success "ONNX Runtime ${ONNXRUNTIME_VERSION} installed successfully"
+}
+
+install_onnxruntime_from_local_archive() {
+    local archive_path=""
+    local legacy_archive_path="${MODEL_INTERFACE_DIR}/${ONNXRUNTIME_ARCHIVE_NAME}"
+    local cached_archive_path="${ARCHIVE_DIR}/${ONNXRUNTIME_ARCHIVE_NAME}"
+
+    if [ -f "${cached_archive_path}" ]; then
+        archive_path="${cached_archive_path}"
+    elif [ -f "${legacy_archive_path}" ]; then
+        archive_path="${legacy_archive_path}"
+    else
+        return 1
+    fi
+
+    print_info "Found cached ONNX Runtime archive: ${archive_path}"
+    extract_onnxruntime_archive "${archive_path}"
+    return 0
+}
+
+download_onnxruntime() {
+    local archive_path="${ARCHIVE_DIR}/${ONNXRUNTIME_ARCHIVE_NAME}"
+
+    if [ -z "${ONNXRUNTIME_DOWNLOAD_URL}" ]; then
+        print_error "Unsupported OS: ${OS_TYPE}"
+        exit 1
+    fi
 
     print_info "Downloading ONNX Runtime ${ONNXRUNTIME_VERSION}..."
     print_info "Platform: ${OS_TYPE} (${ARCH_TYPE})"
-    print_info "URL: ${url}"
+    print_info "URL: ${ONNXRUNTIME_DOWNLOAD_URL}"
 
     if command -v curl &> /dev/null; then
-        curl -L --progress-bar -o "${archive_path}" "${url}" || {
+        curl -L --progress-bar -o "${archive_path}" "${ONNXRUNTIME_DOWNLOAD_URL}" || {
             print_error "Download failed"
             rm -f "${archive_path}"
             exit 1
         }
     elif command -v wget &> /dev/null; then
-        wget --show-progress -O "${archive_path}" "${url}" || {
+        wget --show-progress -O "${archive_path}" "${ONNXRUNTIME_DOWNLOAD_URL}" || {
             print_error "Download failed"
             rm -f "${archive_path}"
             exit 1
@@ -114,42 +163,11 @@ download_onnxruntime() {
         exit 1
     fi
 
-    print_info "Extracting ONNX Runtime..."
-    local temp_dir="${MODEL_INTERFACE_DIR}/temp_extract"
-    rm -rf "${temp_dir}"
-    mkdir -p "${temp_dir}"
-
-    if [[ "$archive_name" == *.tgz ]]; then
-        tar -xzf "${archive_path}" -C "${temp_dir}" || {
-            print_error "Extraction failed"
-            rm -rf "${temp_dir}" "${archive_path}"
-            exit 1
-        }
-    else
-        unzip -o -q "${archive_path}" -d "${temp_dir}" || {
-            print_error "Extraction failed"
-            rm -rf "${temp_dir}" "${archive_path}"
-            exit 1
-        }
-    fi
-
-    local extracted_dir
-    extracted_dir=$(find "${temp_dir}" -maxdepth 1 -type d -name "onnxruntime-*" | head -n 1)
-    if [ -z "${extracted_dir}" ] || [ ! -d "${extracted_dir}" ]; then
-        print_error "Incorrect directory structure after extraction"
-        rm -rf "${temp_dir}" "${archive_path}"
-        exit 1
-    fi
-
-    rm -rf "${ONNXRUNTIME_DIR}"
-    mv "${extracted_dir}" "${ONNXRUNTIME_DIR}"
-
-    rm -rf "${temp_dir}" "${archive_path}"
-
-    print_success "ONNX Runtime ${ONNXRUNTIME_VERSION} installed successfully"
+    extract_onnxruntime_archive "${archive_path}"
 }
 
 print_header "[ONNX Runtime Setup]"
+resolve_onnxruntime_package
 
 if is_onnxruntime_valid; then
     print_success "ONNX Runtime already exists and is valid"
@@ -162,7 +180,10 @@ if [ -d "${ONNXRUNTIME_DIR}" ]; then
     rm -rf "${ONNXRUNTIME_DIR}"
 fi
 
-download_onnxruntime
+if ! install_onnxruntime_from_local_archive; then
+    print_warning "Cached ONNX Runtime archive not found in ${ARCHIVE_DIR}"
+    download_onnxruntime
+fi
 
 if ! is_onnxruntime_valid; then
     print_error "ONNX Runtime installation failed"
