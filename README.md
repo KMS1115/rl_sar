@@ -15,13 +15,13 @@ Removed from this tree:
 
 ## Build
 
-Build standalone binaries:
+Real robot binary:
 
 ```bash
 ./build.sh -m
 ```
 
-Build standalone binaries with MuJoCo support:
+MuJoCo simulation binary:
 
 ```bash
 ./build.sh -mj
@@ -29,6 +29,13 @@ Build standalone binaries with MuJoCo support:
 
 `./build.sh -mj` uses the bundled `src/rl_sar_zoo` tree in this repository.
 The build no longer clones robot descriptions on demand.
+
+Built binaries are placed at:
+
+```bash
+./cmake_build/rl_real_go2
+./cmake_build/rl_sim_mujoco
+```
 
 Offline ONNX Runtime setup:
 
@@ -50,53 +57,105 @@ Offline Unitree SDK third-party runtime setup:
 
 ## Run
 
-Real robot:
+Available robots:
+
+- `go2`
+- `go2w`
+
+Available controller configs:
+
+- `default`
+- `dreamwaq`
+
+Available MuJoCo scenes:
+
+- `scene`
+- `scene_terrain`
+
+## Real Robot
+
+Usage:
 
 ```bash
-./cmake_build/bin/rl_real_go2 <NETWORK_INTERFACE> [wheel] [config_name]
+./cmake_build/rl_real_go2 <NETWORK_INTERFACE> [wheel] [config_name]
 ```
 
-- no `wheel`: `go2`
-- `wheel`: `go2w`
-- default `config_name`: `default`
-- available examples:
-  - `go2/default`
-  - `go2/dreamwaq`
-  - `go2w/default`
-  - `go2w/dreamwaq`
+- If `wheel` is omitted, the robot is `go2`.
+- If `wheel` is present, the robot is `go2w`.
+- If `config_name` is omitted, it defaults to `default`.
+- Argument order matters for `go2w`: put `wheel` before `config_name`.
 
-MuJoCo:
+Examples:
+
+`go2` + `default`
 
 ```bash
-./cmake_build/bin/rl_sim_mujoco <go2|go2w> <scene_name> [config_name]
+./cmake_build/rl_real_go2 eth0
 ```
 
-Example:
+`go2` + `dreamwaq`
 
 ```bash
-./cmake_build/bin/rl_sim_mujoco go2 scene
+./cmake_build/rl_real_go2 eth0 dreamwaq
+```
+
+`go2w` + `default`
+
+```bash
+./cmake_build/rl_real_go2 eth0 wheel
+```
+
+`go2w` + `dreamwaq`
+
+```bash
+./cmake_build/rl_real_go2 eth0 wheel dreamwaq
+```
+
+## MuJoCo
+
+Usage:
+
+```bash
+./cmake_build/rl_sim_mujoco <go2|go2w> <scene_name> [config_name]
+```
+
+- If `config_name` is omitted, it defaults to `default`.
+- Scene names come from `src/rl_sar_zoo/<robot>_description/mjcf/*.xml`.
+
+Examples:
+
+`go2` + `default`
+
+```bash
+./cmake_build/rl_sim_mujoco go2 scene
+```
+
+`go2` + `dreamwaq`
+
+```bash
+./cmake_build/rl_sim_mujoco go2 scene dreamwaq
+```
+
+`go2w` + `default`
+
+```bash
+./cmake_build/rl_sim_mujoco go2w scene
+```
+
+`go2w` + `dreamwaq`
+
+```bash
+./cmake_build/rl_sim_mujoco go2w scene dreamwaq
+```
+
+Terrain examples:
+
+```bash
+./cmake_build/rl_sim_mujoco go2 scene_terrain
 ```
 
 ```bash
-./cmake_build/bin/rl_sim_mujoco go2 scene dreamwaq
-```
-
-```bash
-./cmake_build/bin/rl_sim_mujoco go2w scene
-```
-
-Real-robot examples:
-
-```bash
-./cmake_build/bin/rl_real_go2 eth0
-```
-
-```bash
-./cmake_build/bin/rl_real_go2 eth0 dreamwaq
-```
-
-```bash
-./cmake_build/bin/rl_real_go2 eth0 wheel
+./cmake_build/rl_sim_mujoco go2w scene_terrain dreamwaq
 ```
 
 Policy/config lookup:
@@ -113,5 +172,5 @@ Policy/config lookup:
 ## Notes
 
 - MuJoCo joystick discovery scans `/dev/input/js0` through `/dev/input/js9`.
-- Policies kept in this repo are only under [`policy/go2`](/home/ms/rl_sar/policy/go2) and [`policy/go2w`](/home/ms/rl_sar/policy/go2w).
+- Policies kept in this repo are only under `policy/go2` and `policy/go2w`.
 - `src/rl_sar_zoo` should be committed with this repository and now keeps only the MuJoCo `mjcf` assets required by `go2_description` and `go2w_description`.
