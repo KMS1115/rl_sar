@@ -66,6 +66,7 @@ Available controller configs:
 
 - `default`
 - `dreamwaq`
+- `dreamflex`
 
 Available MuJoCo scenes:
 
@@ -136,6 +137,26 @@ Examples:
 ./cmake_build/rl_sim_mujoco go2 scene dreamwaq
 ```
 
+`go2` + `dreamflex`
+
+```bash
+./cmake_build/rl_sim_mujoco go2 scene dreamflex
+```
+
+Fault injection in MuJoCo:
+
+- Available for every config, including `default`, `dreamwaq`, and `dreamflex`
+- Locked `thigh` / `calf` joints use fixed fold targets from `fault_lock_thigh_q` / `fault_lock_calf_q` in `policy/<robot>/base.yaml`
+- If those keys are absent, the simulator falls back to the joint's `seated_dof_pos`
+- Keyboard:
+  - `T`: cycle `none -> locked -> weakened -> none`
+  - `Y` / `U`: select fault joint `- / +`
+  - `I` / `O`: adjust fault severity `- / +`
+- Gamepad:
+  - `LB + A`: cycle fault mode
+  - `LB + DPad Left/Right`: select fault joint `- / +`
+  - `LB + DPad Down/Up`: adjust fault severity `- / +`
+
 `go2w` + `default`
 
 ```bash
@@ -166,6 +187,7 @@ Policy/config lookup:
 - Examples:
   - `go2 + default` -> `policy/go2/default/`
   - `go2 + dreamwaq` -> `policy/go2/dreamwaq/`
+  - `go2 + dreamflex` -> `policy/go2/dreamflex/`
   - `go2w + default` -> `policy/go2w/default/`
   - `go2w + dreamwaq` -> `policy/go2w/dreamwaq/`
 

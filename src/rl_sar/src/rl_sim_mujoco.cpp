@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
+#include <sstream>
 #include <vector>
 
 namespace
@@ -24,6 +26,18 @@ bool ContainsAny(const std::string& text, const std::vector<std::string>& tokens
     return std::any_of(tokens.begin(), tokens.end(), [&](const std::string& token) {
         return text.find(token) != std::string::npos;
     });
+}
+
+bool IsThighJointName(const std::string& joint_name)
+{
+    const std::string lowered = ToLower(joint_name);
+    return lowered.find("thigh") != std::string::npos;
+}
+
+bool IsCalfJointName(const std::string& joint_name)
+{
+    const std::string lowered = ToLower(joint_name);
+    return lowered.find("calf") != std::string::npos || lowered.find("knee") != std::string::npos;
 }
 
 bool IsPointerLikeDevice(const std::string& device_name)
@@ -62,6 +76,19 @@ bool IsLikelyGamepad(const std::string& device_name, unsigned char axis_count, u
     }
 
     return axis_count >= 4 && button_count >= 8;
+}
+
+const char* FaultModeName(RL_Sim::FaultMode mode)
+{
+    switch (mode)
+    {
+    case RL_Sim::FaultMode::Locked:
+        return "locked";
+    case RL_Sim::FaultMode::Weakened:
+        return "weakened";
+    default:
+        return "none";
+    }
 }
 }
 
@@ -192,6 +219,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
 #endif
 
     std::cout << LOGGER::INFO << "RL_Sim start" << std::endl;
+    this->PrintFaultStatus();
 
     // start simulation UI loop (blocking call)
     sim->RenderLoop();
@@ -238,12 +266,59 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
 {
     if (mj_data)
     {
-        for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+        const auto joint_mapping = this->params.Get<std::vector<int>>("joint_mapping");
+        const auto joint_names = this->params.Get<std::vector<std::string>>("joint_names");
+        const int num_of_dofs = this->params.Get<int>("num_of_dofs");
+
+        int locked_qpos_adr = -1;
+        int locked_dof_adr = -1;
+        if (this->fault_mode == FaultMode::Locked && this->fault_joint_idx >= 0 && this->fault_joint_idx < static_cast<int>(joint_names.size()))
         {
-            mj_data->ctrl[this->params.Get<std::vector<int>>("joint_mapping")[i]] =
-                command->motor_command.tau[i] +
-                command->motor_command.kp[i] * (command->motor_command.q[i] - mj_data->sensordata[this->params.Get<std::vector<int>>("joint_mapping")[i]]) +
-                command->motor_command.kd[i] * (command->motor_command.dq[i] - mj_data->sensordata[this->params.Get<std::vector<int>>("joint_mapping")[i] + this->params.Get<int>("num_of_dofs")]);
+            const int joint_id = mj_name2id(this->mj_model, mjOBJ_JOINT, joint_names[this->fault_joint_idx].c_str());
+            if (joint_id >= 0)
+            {
+                locked_qpos_adr = this->mj_model->jnt_qposadr[joint_id];
+                locked_dof_adr = this->mj_model->jnt_dofadr[joint_id];
+                this->mj_data->qpos[locked_qpos_adr] = this->fault_locked_q;
+                this->mj_data->qvel[locked_dof_adr] = 0.0;
+            }
+        }
+
+        for (int i = 0; i < num_of_dofs; ++i)
+        {
+            float joint_q = mj_data->sensordata[joint_mapping[i]];
+            float joint_dq = mj_data->sensordata[joint_mapping[i] + num_of_dofs];
+            float desired_q = command->motor_command.q[i];
+            float desired_dq = command->motor_command.dq[i];
+            float desired_tau = command->motor_command.tau[i];
+            float desired_kp = command->motor_command.kp[i];
+            float desired_kd = command->motor_command.kd[i];
+
+            if (this->fault_mode == FaultMode::Locked && i == this->fault_joint_idx)
+            {
+                if (locked_qpos_adr >= 0 && locked_dof_adr >= 0)
+                {
+                    joint_q = static_cast<float>(this->mj_data->qpos[locked_qpos_adr]);
+                    joint_dq = static_cast<float>(this->mj_data->qvel[locked_dof_adr]);
+                }
+                desired_q = this->fault_locked_q;
+                desired_dq = 0.0f;
+                desired_tau = 0.0f;
+                desired_kp = std::max(desired_kp, 80.0f);
+                desired_kd = std::max(desired_kd, 2.0f);
+            }
+
+            float ctrl =
+                desired_tau +
+                desired_kp * (desired_q - joint_q) +
+                desired_kd * (desired_dq - joint_dq);
+
+            if (this->fault_mode == FaultMode::Weakened && i == this->fault_joint_idx)
+            {
+                ctrl *= this->fault_tau_scale;
+            }
+
+            mj_data->ctrl[joint_mapping[i]] = ctrl;
         }
     }
 }
@@ -279,12 +354,196 @@ void RL_Sim::RobotControl()
         }
         simulation_running = !simulation_running;
     }
+    if (this->control.current_keyboard == Input::Keyboard::T || this->control.current_gamepad == Input::Gamepad::LB_A)
+    {
+        this->CycleFaultMode();
+    }
+    if (this->control.current_keyboard == Input::Keyboard::Y || this->control.current_gamepad == Input::Gamepad::LB_DPadLeft)
+    {
+        this->SelectFaultJoint(-1);
+    }
+    if (this->control.current_keyboard == Input::Keyboard::U || this->control.current_gamepad == Input::Gamepad::LB_DPadRight)
+    {
+        this->SelectFaultJoint(1);
+    }
+    if (this->control.current_keyboard == Input::Keyboard::I || this->control.current_gamepad == Input::Gamepad::LB_DPadDown)
+    {
+        this->AdjustFaultSeverity(-0.01f);
+    }
+    if (this->control.current_keyboard == Input::Keyboard::O || this->control.current_gamepad == Input::Gamepad::LB_DPadUp)
+    {
+        this->AdjustFaultSeverity(0.01f);
+    }
 
     this->control.ClearInput();
 
     this->SetCommand(&this->robot_command);
 }
 
+
+std::string RL_Sim::GetFaultJointName() const
+{
+    const auto joint_names = this->params.Get<std::vector<std::string>>("joint_names");
+    if (this->fault_joint_idx >= 0 && this->fault_joint_idx < static_cast<int>(joint_names.size()))
+    {
+        return joint_names[this->fault_joint_idx];
+    }
+    return "joint_" + std::to_string(this->fault_joint_idx);
+}
+
+bool RL_Sim::TryGetConfiguredLockedJointTarget(float* target_q) const
+{
+    if (target_q == nullptr)
+    {
+        return false;
+    }
+
+    const std::string joint_name = this->GetFaultJointName();
+    if (IsThighJointName(joint_name))
+    {
+        if (this->params.Has("fault_lock_thigh_q"))
+        {
+            *target_q = this->params.Get<float>("fault_lock_thigh_q");
+            return true;
+        }
+
+        const auto seated_dof_pos = this->params.Get<std::vector<float>>("seated_dof_pos");
+        if (this->fault_joint_idx >= 0 && this->fault_joint_idx < static_cast<int>(seated_dof_pos.size()))
+        {
+            *target_q = seated_dof_pos[this->fault_joint_idx];
+            return true;
+        }
+    }
+
+    if (IsCalfJointName(joint_name))
+    {
+        if (this->params.Has("fault_lock_calf_q"))
+        {
+            *target_q = this->params.Get<float>("fault_lock_calf_q");
+            return true;
+        }
+
+        const auto seated_dof_pos = this->params.Get<std::vector<float>>("seated_dof_pos");
+        if (this->fault_joint_idx >= 0 && this->fault_joint_idx < static_cast<int>(seated_dof_pos.size()))
+        {
+            *target_q = seated_dof_pos[this->fault_joint_idx];
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void RL_Sim::RefreshLockedJointTarget()
+{
+    if (!this->mj_data)
+    {
+        return;
+    }
+
+    const auto joint_mapping = this->params.Get<std::vector<int>>("joint_mapping");
+    const auto default_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
+    const int num_of_dofs = this->params.Get<int>("num_of_dofs");
+    if (this->fault_joint_idx < 0 || this->fault_joint_idx >= num_of_dofs)
+    {
+        return;
+    }
+
+    float configured_target_q = 0.0f;
+    if (this->TryGetConfiguredLockedJointTarget(&configured_target_q))
+    {
+        const auto joint_names = this->params.Get<std::vector<std::string>>("joint_names");
+        if (this->mj_model && this->fault_joint_idx < static_cast<int>(joint_names.size()))
+        {
+            const int joint_id = mj_name2id(this->mj_model, mjOBJ_JOINT, joint_names[this->fault_joint_idx].c_str());
+            if (joint_id >= 0 && this->mj_model->jnt_limited[joint_id])
+            {
+                const double* range = this->mj_model->jnt_range + 2 * joint_id;
+                configured_target_q = std::clamp(configured_target_q, static_cast<float>(range[0]), static_cast<float>(range[1]));
+            }
+        }
+
+        this->fault_locked_q = configured_target_q;
+        return;
+    }
+
+    const float current_q = this->mj_data->sensordata[joint_mapping[this->fault_joint_idx]];
+    const float lower = default_dof_pos[this->fault_joint_idx] - this->fault_lock_half_range;
+    const float upper = default_dof_pos[this->fault_joint_idx] + this->fault_lock_half_range;
+    this->fault_locked_q = std::clamp(current_q, lower, upper);
+}
+
+void RL_Sim::CycleFaultMode()
+{
+    switch (this->fault_mode)
+    {
+    case FaultMode::None:
+        this->fault_mode = FaultMode::Locked;
+        this->RefreshLockedJointTarget();
+        break;
+    case FaultMode::Locked:
+        this->fault_mode = FaultMode::Weakened;
+        break;
+    default:
+        this->fault_mode = FaultMode::None;
+        break;
+    }
+    this->PrintFaultStatus();
+}
+
+void RL_Sim::SelectFaultJoint(int delta)
+{
+    const int num_of_dofs = this->params.Get<int>("num_of_dofs");
+    if (num_of_dofs <= 0)
+    {
+        return;
+    }
+    this->fault_joint_idx = (this->fault_joint_idx + delta + num_of_dofs) % num_of_dofs;
+    if (this->fault_mode == FaultMode::Locked)
+    {
+        this->RefreshLockedJointTarget();
+    }
+    this->PrintFaultStatus();
+}
+
+void RL_Sim::AdjustFaultSeverity(float delta)
+{
+    if (this->fault_mode == FaultMode::Locked)
+    {
+        this->fault_lock_half_range = std::clamp(this->fault_lock_half_range + delta, 0.01f, 0.25f);
+        this->RefreshLockedJointTarget();
+    }
+    else if (this->fault_mode == FaultMode::Weakened)
+    {
+        this->fault_tau_scale = std::clamp(this->fault_tau_scale + delta, 0.0f, 1.0f);
+    }
+    this->PrintFaultStatus();
+}
+
+void RL_Sim::PrintFaultStatus() const
+{
+    std::ostringstream message;
+    message << LOGGER::INFO << "[DreamFLEX Fault] mode=" << FaultModeName(this->fault_mode)
+            << ", joint=" << this->fault_joint_idx << " (" << this->GetFaultJointName() << ")";
+    if (this->fault_mode == FaultMode::Locked)
+    {
+        float configured_target_q = 0.0f;
+        if (this->TryGetConfiguredLockedJointTarget(&configured_target_q))
+        {
+            message << ", q_target=" << std::fixed << std::setprecision(3) << configured_target_q;
+        }
+        else
+        {
+            message << ", q_half_range=" << std::fixed << std::setprecision(3) << this->fault_lock_half_range;
+        }
+    }
+    else if (this->fault_mode == FaultMode::Weakened)
+    {
+        message << ", k_tau=" << std::fixed << std::setprecision(3) << this->fault_tau_scale;
+    }
+    message << ". Keys: T=cycle fault, Y/U=joint -, +, I/O=severity -, +";
+    std::cout << message.str() << std::endl;
+}
 
 bool RL_Sim::TryOpenSysJoystick(const std::string& device)
 {
@@ -470,8 +729,8 @@ void RL_Sim::GetSysJoystick()
     if (this->sys_js_button[4].pressed && this->sys_js_button[10].on_press) this->control.SetGamepad(Input::Gamepad::LB_RStick);
     if (this->sys_js_button[4].pressed && this->sys_js_axis[7] < 0) this->control.SetGamepad(Input::Gamepad::LB_DPadUp);
     if (this->sys_js_button[4].pressed && this->sys_js_axis[7] > 0) this->control.SetGamepad(Input::Gamepad::LB_DPadDown);
-    if (this->sys_js_button[4].pressed && this->sys_js_axis[6] > 0) this->control.SetGamepad(Input::Gamepad::LB_DPadRight);
-    if (this->sys_js_button[4].pressed && this->sys_js_axis[6] < 0) this->control.SetGamepad(Input::Gamepad::LB_DPadLeft);
+    if (this->sys_js_button[4].pressed && this->sys_js_axis[6] > 0) this->control.SetGamepad(Input::Gamepad::LB_DPadLeft);
+    if (this->sys_js_button[4].pressed && this->sys_js_axis[6] < 0) this->control.SetGamepad(Input::Gamepad::LB_DPadRight);
     if (this->sys_js_button[5].pressed && this->sys_js_button[0].on_press) this->control.SetGamepad(Input::Gamepad::RB_A);
     if (this->sys_js_button[5].pressed && this->sys_js_button[1].on_press) this->control.SetGamepad(Input::Gamepad::RB_B);
     if (this->sys_js_button[5].pressed && this->sys_js_button[2].on_press) this->control.SetGamepad(Input::Gamepad::RB_X);

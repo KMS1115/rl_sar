@@ -59,6 +59,13 @@ public:
     RL_Sim(int argc, char **argv);
     ~RL_Sim();
 
+    enum class FaultMode
+    {
+        None = 0,
+        Locked,
+        Weakened,
+    };
+
     std::unique_ptr<mj::Simulate> sim;
     static RL_Sim* instance;
 
@@ -106,6 +113,20 @@ private:
     std::map<std::string, float> joint_positions;
     std::map<std::string, float> joint_velocities;
     std::map<std::string, float> joint_efforts;
+
+    FaultMode fault_mode = FaultMode::None;
+    int fault_joint_idx = 0;
+    float fault_tau_scale = 0.20f;
+    float fault_lock_half_range = 0.05f;
+    float fault_locked_q = 0.0f;
+
+    std::string GetFaultJointName() const;
+    bool TryGetConfiguredLockedJointTarget(float* target_q) const;
+    void RefreshLockedJointTarget();
+    void CycleFaultMode();
+    void SelectFaultJoint(int delta);
+    void AdjustFaultSeverity(float delta);
+    void PrintFaultStatus() const;
 };
 
 #endif // RL_SIM_HPP
