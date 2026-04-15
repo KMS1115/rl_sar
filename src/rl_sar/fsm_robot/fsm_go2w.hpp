@@ -159,19 +159,30 @@ public:
             rl.params.Get<std::vector<float>>("startup_dof_pos",
             rl.params.Get<std::vector<float>>("default_dof_pos"))
         );
-        Interpolate(percent_getdown, rl.now_state.motor_state.q, seated_dof_pos, 0.9f, "Getting down", true);
+        if (Interpolate(percent_getdown, rl.now_state.motor_state.q, seated_dof_pos, 0.9f, "Getting down", true)) return;
+
+        const auto fixed_kp = rl.params.Get<std::vector<float>>("fixed_kp");
+        const auto fixed_kd = rl.params.Get<std::vector<float>>("fixed_kd");
+        for (int i = 0; i < rl.params.Get<int>("num_of_dofs"); ++i)
+        {
+            fsm_command->motor_command.q[i] = seated_dof_pos[i];
+            fsm_command->motor_command.dq[i] = 0;
+            fsm_command->motor_command.kp[i] = fixed_kp[i];
+            fsm_command->motor_command.kd[i] = fixed_kd[i];
+            fsm_command->motor_command.tau[i] = 0;
+        }
     }
 
     void Exit() override {}
 
     std::string CheckChange() override
     {
-        if (IsEstopRequested(rl) ||
-            percent_getdown >= 1.0f)
+        if (IsEstopRequested(rl))
         {
             return "RLFSMStatePassive";
         }
-        else if (rl.control.current_keyboard == Input::Keyboard::Num0 || rl.control.current_gamepad == Input::Gamepad::A)
+        if (percent_getdown >= 1.0f &&
+            (rl.control.current_keyboard == Input::Keyboard::Num0 || rl.control.current_gamepad == Input::Gamepad::A))
         {
             return "RLFSMStateGetUp";
         }
