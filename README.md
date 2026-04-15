@@ -157,6 +157,14 @@ Fault injection in MuJoCo:
   - `LB + DPad Left/Right`: select fault joint `- / +`
   - `LB + DPad Down/Up`: adjust fault severity `- / +`
 
+Fault injection on hardware (`rl_real_go2`):
+
+- Uses the same controls as MuJoCo
+- `LB + A`: cycle `none -> locked -> weakened -> none`
+- `LB + DPad Left/Right`: select fault joint `- / +`
+- `LB + DPad Down/Up`: adjust severity
+- Locked mode holds the selected joint at the current joint angle, unless `fault_lock_thigh_q` / `fault_lock_calf_q` is configured in `policy/<robot>/base.yaml`
+
 `go2w` + `default`
 
 ```bash

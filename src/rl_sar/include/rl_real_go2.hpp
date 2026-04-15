@@ -72,6 +72,13 @@ public:
     RL_Real(int argc, char **argv);
     ~RL_Real();
 
+    enum class FaultMode
+    {
+        None = 0,
+        Locked,
+        Weakened,
+    };
+
 private:
     // rl functions
     std::vector<float> Forward() override;
@@ -112,6 +119,20 @@ private:
     // others
     std::vector<float> mapped_joint_positions;
     std::vector<float> mapped_joint_velocities;
+    FaultMode fault_mode = FaultMode::None;
+    int fault_joint_idx = 0;
+    float fault_tau_scale = 0.20f;
+    float fault_lock_half_range = 0.05f;
+    float fault_locked_q = 0.0f;
+
+    std::string GetFaultJointName() const;
+    bool TryGetConfiguredLockedJointTarget(float* target_q) const;
+    void RefreshLockedJointTarget();
+    void CycleFaultMode();
+    void SelectFaultJoint(int delta);
+    void AdjustFaultSeverity(float delta);
+    void ApplyFaultCommand(RobotCommand<float> *command) const;
+    void PrintFaultStatus() const;
 };
 
 #endif // RL_REAL_GO2_HPP

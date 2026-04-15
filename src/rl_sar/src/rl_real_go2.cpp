@@ -5,6 +5,47 @@
 
 #include "rl_real_go2.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <iomanip>
+#include <sstream>
+
+namespace
+{
+std::string ToLower(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
+
+bool IsThighJointName(const std::string& joint_name)
+{
+    const std::string lowered = ToLower(joint_name);
+    return lowered.find("thigh") != std::string::npos;
+}
+
+bool IsCalfJointName(const std::string& joint_name)
+{
+    const std::string lowered = ToLower(joint_name);
+    return lowered.find("calf") != std::string::npos || lowered.find("knee") != std::string::npos;
+}
+
+const char* FaultModeName(RL_Real::FaultMode mode)
+{
+    switch (mode)
+    {
+    case RL_Real::FaultMode::Locked:
+        return "locked";
+    case RL_Real::FaultMode::Weakened:
+        return "weakened";
+    default:
+        return "none";
+    }
+}
+}
+
 RL_Real::RL_Real(int argc, char **argv)
 {
     bool wheel_mode = false;
@@ -227,6 +268,29 @@ void RL_Real::RobotControl()
 
     this->StateController(&this->robot_state, &this->robot_command);
 
+    if (this->control.current_keyboard == Input::Keyboard::T || this->control.current_gamepad == Input::Gamepad::LB_A)
+    {
+        this->CycleFaultMode();
+    }
+    if (this->control.current_keyboard == Input::Keyboard::Y || this->control.current_gamepad == Input::Gamepad::LB_DPadLeft)
+    {
+        this->SelectFaultJoint(-1);
+    }
+    if (this->control.current_keyboard == Input::Keyboard::U || this->control.current_gamepad == Input::Gamepad::LB_DPadRight)
+    {
+        this->SelectFaultJoint(1);
+    }
+    if (this->control.current_keyboard == Input::Keyboard::I || this->control.current_gamepad == Input::Gamepad::LB_DPadDown)
+    {
+        this->AdjustFaultSeverity(-0.01f);
+    }
+    if (this->control.current_keyboard == Input::Keyboard::O || this->control.current_gamepad == Input::Gamepad::LB_DPadUp)
+    {
+        this->AdjustFaultSeverity(0.01f);
+    }
+
+    this->ApplyFaultCommand(&this->robot_command);
+
     this->control.ClearInput();
 
     this->SetCommand(&this->robot_command);
@@ -431,6 +495,188 @@ void RL_Real::JoystickHandler(const void *message)
     joystick = *(unitree_go::msg::dds_::WirelessController_ *)message;
     this->previous_unitree_joy = this->unitree_joy;
     this->unitree_joy.value = joystick.keys();
+}
+
+std::string RL_Real::GetFaultJointName() const
+{
+    const auto joint_names = this->params.Get<std::vector<std::string>>("joint_names");
+    if (this->fault_joint_idx >= 0 && this->fault_joint_idx < static_cast<int>(joint_names.size()))
+    {
+        return joint_names[this->fault_joint_idx];
+    }
+    return "joint_" + std::to_string(this->fault_joint_idx);
+}
+
+bool RL_Real::TryGetConfiguredLockedJointTarget(float* target_q) const
+{
+    if (target_q == nullptr)
+    {
+        return false;
+    }
+
+    const std::string joint_name = this->GetFaultJointName();
+    if (IsThighJointName(joint_name))
+    {
+        if (this->params.Has("fault_lock_thigh_q"))
+        {
+            *target_q = this->params.Get<float>("fault_lock_thigh_q");
+            return true;
+        }
+
+        const auto seated_dof_pos = this->params.Get<std::vector<float>>("seated_dof_pos");
+        if (this->fault_joint_idx >= 0 && this->fault_joint_idx < static_cast<int>(seated_dof_pos.size()))
+        {
+            *target_q = seated_dof_pos[this->fault_joint_idx];
+            return true;
+        }
+    }
+
+    if (IsCalfJointName(joint_name))
+    {
+        if (this->params.Has("fault_lock_calf_q"))
+        {
+            *target_q = this->params.Get<float>("fault_lock_calf_q");
+            return true;
+        }
+
+        const auto seated_dof_pos = this->params.Get<std::vector<float>>("seated_dof_pos");
+        if (this->fault_joint_idx >= 0 && this->fault_joint_idx < static_cast<int>(seated_dof_pos.size()))
+        {
+            *target_q = seated_dof_pos[this->fault_joint_idx];
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void RL_Real::RefreshLockedJointTarget()
+{
+    const int num_of_dofs = this->params.Get<int>("num_of_dofs");
+    if (this->fault_joint_idx < 0 || this->fault_joint_idx >= num_of_dofs)
+    {
+        return;
+    }
+
+    float configured_target_q = 0.0f;
+    if (this->TryGetConfiguredLockedJointTarget(&configured_target_q))
+    {
+        this->fault_locked_q = configured_target_q;
+        return;
+    }
+
+    const auto default_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
+    const float current_q = this->robot_state.motor_state.q[this->fault_joint_idx];
+    const float lower = default_dof_pos[this->fault_joint_idx] - this->fault_lock_half_range;
+    const float upper = default_dof_pos[this->fault_joint_idx] + this->fault_lock_half_range;
+    this->fault_locked_q = std::clamp(current_q, lower, upper);
+}
+
+void RL_Real::CycleFaultMode()
+{
+    switch (this->fault_mode)
+    {
+    case FaultMode::None:
+        this->fault_mode = FaultMode::Locked;
+        this->RefreshLockedJointTarget();
+        break;
+    case FaultMode::Locked:
+        this->fault_mode = FaultMode::Weakened;
+        break;
+    default:
+        this->fault_mode = FaultMode::None;
+        break;
+    }
+    this->PrintFaultStatus();
+}
+
+void RL_Real::SelectFaultJoint(int delta)
+{
+    const int num_of_dofs = this->params.Get<int>("num_of_dofs");
+    if (num_of_dofs <= 0)
+    {
+        return;
+    }
+
+    this->fault_joint_idx = (this->fault_joint_idx + delta + num_of_dofs) % num_of_dofs;
+    if (this->fault_mode == FaultMode::Locked)
+    {
+        this->RefreshLockedJointTarget();
+    }
+    this->PrintFaultStatus();
+}
+
+void RL_Real::AdjustFaultSeverity(float delta)
+{
+    if (this->fault_mode == FaultMode::Locked)
+    {
+        this->fault_lock_half_range = std::clamp(this->fault_lock_half_range + delta, 0.01f, 0.25f);
+        this->RefreshLockedJointTarget();
+    }
+    else if (this->fault_mode == FaultMode::Weakened)
+    {
+        this->fault_tau_scale = std::clamp(this->fault_tau_scale + delta, 0.0f, 1.0f);
+    }
+    this->PrintFaultStatus();
+}
+
+void RL_Real::ApplyFaultCommand(RobotCommand<float> *command) const
+{
+    if (command == nullptr)
+    {
+        return;
+    }
+
+    const int num_of_dofs = this->params.Get<int>("num_of_dofs");
+    if (this->fault_joint_idx < 0 || this->fault_joint_idx >= num_of_dofs)
+    {
+        return;
+    }
+
+    const int idx = this->fault_joint_idx;
+    if (this->fault_mode == FaultMode::Locked)
+    {
+        const auto fixed_kp = this->params.Get<std::vector<float>>("fixed_kp");
+        const auto fixed_kd = this->params.Get<std::vector<float>>("fixed_kd");
+        command->motor_command.q[idx] = this->fault_locked_q;
+        command->motor_command.dq[idx] = 0.0f;
+        command->motor_command.tau[idx] = 0.0f;
+        command->motor_command.kp[idx] = std::max(command->motor_command.kp[idx], fixed_kp[idx]);
+        command->motor_command.kd[idx] = std::max(command->motor_command.kd[idx], fixed_kd[idx]);
+    }
+    else if (this->fault_mode == FaultMode::Weakened)
+    {
+        command->motor_command.kp[idx] *= this->fault_tau_scale;
+        command->motor_command.kd[idx] *= this->fault_tau_scale;
+        command->motor_command.tau[idx] *= this->fault_tau_scale;
+    }
+}
+
+void RL_Real::PrintFaultStatus() const
+{
+    std::ostringstream message;
+    message << std::endl
+            << LOGGER::INFO << "[Hardware Fault] mode=" << FaultModeName(this->fault_mode)
+            << ", joint=" << this->fault_joint_idx << " (" << this->GetFaultJointName() << ")";
+    if (this->fault_mode == FaultMode::Locked)
+    {
+        float configured_target_q = 0.0f;
+        if (this->TryGetConfiguredLockedJointTarget(&configured_target_q))
+        {
+            message << ", q_target=" << std::fixed << std::setprecision(3) << configured_target_q;
+        }
+        else
+        {
+            message << ", q_hold=" << std::fixed << std::setprecision(3) << this->fault_locked_q
+                    << ", q_half_range=" << std::fixed << std::setprecision(3) << this->fault_lock_half_range;
+        }
+    }
+    else if (this->fault_mode == FaultMode::Weakened)
+    {
+        message << ", k_tau=" << std::fixed << std::setprecision(3) << this->fault_tau_scale;
+    }
+    message << ". Keys: LB+A=cycle fault, LB+DPad Left/Right=joint -, +, LB+DPad Down/Up=severity -, +";
+    std::cout << message.str() << std::endl;
 }
 
 // Signal handler for CMAKE mode
