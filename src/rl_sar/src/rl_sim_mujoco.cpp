@@ -828,9 +828,22 @@ std::vector<float> RL_Sim::Forward()
     std::vector<float> actions;
     if (this->params.Get<std::vector<int>>("observations_history").size() != 0)
     {
+        if (this->history_obs.empty())
+        {
+            this->history_obs_buf.reset({0}, clamped_obs);
+        }
         this->history_obs_buf.insert(clamped_obs);
         this->history_obs = this->history_obs_buf.get_obs_vec(this->params.Get<std::vector<int>>("observations_history"));
-        actions = this->model->forward({this->history_obs});
+        const bool dreamwaq_two_inputs =
+            this->params.Get<bool>("dreamwaq_two_inputs", false) || this->model->get_input_count() >= 2;
+        if (dreamwaq_two_inputs)
+        {
+            actions = this->model->forward({clamped_obs, this->history_obs});
+        }
+        else
+        {
+            actions = this->model->forward({this->history_obs});
+        }
     }
     else
     {

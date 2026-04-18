@@ -26,6 +26,7 @@ public:
     virtual bool is_loaded() const = 0;
     virtual std::vector<float> forward(const std::vector<std::vector<float>>& inputs) = 0;
     virtual std::string get_model_type() const = 0;
+    virtual size_t get_input_count() const = 0;
 };
 
 class ONNXModel : public Model
@@ -52,6 +53,14 @@ public:
     bool is_loaded() const override { return loaded_; }
     std::vector<float> forward(const std::vector<std::vector<float>>& inputs) override;
     std::string get_model_type() const override { return "onnx"; }
+    size_t get_input_count() const override
+    {
+#ifdef USE_ONNX
+        return input_node_names_.size();
+#else
+        return 0;
+#endif
+    }
 
 private:
 #ifdef USE_ONNX

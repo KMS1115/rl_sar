@@ -67,27 +67,41 @@ std::vector<float> ONNXModel::forward(const std::vector<std::vector<float>>& inp
 #ifdef USE_ONNX
     try
     {
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        if (inputs.size() < input_node_names_.size())
+        {
+            throw std::runtime_error(
+                "Model expects " + std::to_string(input_node_names_.size()) + " input tensors, got " + std::to_string(inputs.size())
+            );
+        }
 
-        const auto& input = inputs[0];
-        const auto& input_shape = input_shapes_.at(0);
+        std::vector<Ort::Value> input_tensors;
+        std::vector<const char*> input_names;
+        input_tensors.reserve(input_node_names_.size());
+        input_names.reserve(input_node_names_.size());
 
-        auto input_tensor = Ort::Value::CreateTensor<float>(
-            memory_info,
-            const_cast<float*>(input.data()),
-            input.size(),
-            input_shape.data(),
-            input_shape.size()
-        );
+        for (size_t i = 0; i < input_node_names_.size(); ++i)
+        {
+            const auto& input = inputs[i];
+            const auto& input_shape = input_shapes_.at(i);
+            input_tensors.push_back(
+                Ort::Value::CreateTensor<float>(
+                    memory_info_,
+                    const_cast<float*>(input.data()),
+                    input.size(),
+                    input_shape.data(),
+                    input_shape.size()
+                )
+            );
+            input_names.push_back(input_node_names_[i].c_str());
+        }
 
-        const char* input_names[] = {input_node_names_[0].c_str()};
         const char* output_names[] = {output_node_names_[0].c_str()};
 
         auto outputs = session_->Run(
             Ort::RunOptions{nullptr},
-            input_names,
-            &input_tensor,
-            1,
+            input_names.data(),
+            input_tensors.data(),
+            input_tensors.size(),
             output_names,
             1
         );
