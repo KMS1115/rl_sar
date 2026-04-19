@@ -3,7 +3,7 @@
 
 go2/dreamwaq:
   model_name: "policy.onnx"
-  decimation : 2
+  decimation : 4
   dreamwaq_two_inputs: true
   num_direct_observations: 45
   num_history_observations: 225
@@ -37,10 +37,10 @@ go2/dreamwaq:
              3.0, 3.0, 3.0,
              3.0, 3.0, 3.0]
   num_of_dofs: 12
-  action_scale: [0.125, 0.25, 0.25,
-                 0.125, 0.25, 0.25,
-                 0.125, 0.25, 0.25,
-                 0.125, 0.25, 0.25]
+  action_scale: [0.25, 0.25, 0.25,
+                 0.25, 0.25, 0.25,
+                 0.25, 0.25, 0.25,
+                 0.25, 0.25, 0.25]
   wheel_indices: []
   lin_vel_scale: 2.0
   ang_vel_scale: 0.25
