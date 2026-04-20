@@ -3,10 +3,14 @@
 
 go2/dreamflex:
   model_name: "policy.onnx"
+  decimation: 4
+  history_two_inputs: true
+  num_direct_observations: 45
+  num_history_observations: 225
   num_observations: 225
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: [4, 3, 2, 1, 0]
-  observations_history_priority: "term"
+  observations_history_priority: "time"
   clip_obs: 100.0
   clip_actions_lower: [-100.0, -100.0, -100.0,
                        -100.0, -100.0, -100.0,
@@ -33,16 +37,16 @@ go2/dreamflex:
              3.0, 3.0, 3.0,
              3.0, 3.0, 3.0]
   num_of_dofs: 12
-  action_scale: [0.125, 0.25, 0.25,
-                 0.125, 0.25, 0.25,
-                 0.125, 0.25, 0.25,
-                 0.125, 0.25, 0.25]
+  action_scale: [0.25, 0.25, 0.25,
+                 0.25, 0.25, 0.25,
+                 0.25, 0.25, 0.25,
+                 0.25, 0.25, 0.25]
   wheel_indices: []
   lin_vel_scale: 2.0
   ang_vel_scale: 0.25
   dof_pos_scale: 1.0
-  dof_vel_scale: 0.2
-  commands_scale: [1.0, 1.0, 1.0]
+  dof_vel_scale: 0.05
+  commands_scale: [1.2, 1.2, 0.20]
   torque_limits: [23.5, 23.5, 23.5,
                   23.5, 23.5, 23.5,
                   23.5, 23.5, 23.5,

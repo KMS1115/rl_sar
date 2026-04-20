@@ -26,6 +26,7 @@
 #include <stdexcept>
 #include <memory>
 #include <string>
+#include <array>
 
 #include <mujoco/mujoco.h>
 #include "joystick.hh"
@@ -63,7 +64,6 @@ public:
     {
         None = 0,
         Locked,
-        Weakened,
     };
 
     std::unique_ptr<mj::Simulate> sim;
@@ -115,16 +115,31 @@ private:
     std::map<std::string, float> joint_efforts;
 
     FaultMode fault_mode = FaultMode::None;
-    int fault_joint_idx = 0;
-    float fault_tau_scale = 0.20f;
+    int fault_leg_idx = 0;
     float fault_lock_half_range = 0.05f;
-    float fault_locked_q = 0.0f;
+    std::array<float, 3> fault_locked_q = {0.0f, 0.0f, 0.0f};
+    std::array<float, 3> fault_lock_start_q = {0.0f, 0.0f, 0.0f};
+    int fault_lock_start_motiontime = 0;
+    float fault_lock_ramp_duration = 2.0f;
+    bool fault_lock_transition_active = false;
+    int fault_input_last_motiontime = -1000000;
+    float fault_input_debounce_s = 0.3f;
+    int fault_release_leg_idx = -1;
+    std::array<float, 3> fault_release_start_q = {0.0f, 0.0f, 0.0f};
+    int fault_release_start_motiontime = 0;
+    bool fault_release_transition_active = false;
 
-    std::string GetFaultJointName() const;
-    bool TryGetConfiguredLockedJointTarget(float* target_q) const;
-    void RefreshLockedJointTarget();
+    std::string GetFaultLegName() const;
+    std::array<int, 3> GetFaultLegJointIndices() const;
+    std::array<int, 3> GetLegJointIndices(int leg_idx) const;
+    bool TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const;
+    void BeginLockedFaultTransition(const std::array<int, 3>& joint_indices, const std::array<float, 3>& target_q);
+    float GetLockedFaultDesiredQ(int leg_joint_offset) const;
+    void BeginReleaseTransition(int leg_idx, const std::array<float, 3>& start_q);
+    float GetReleasedFaultDesiredQ(int leg_joint_offset, float desired_q) const;
+    void RefreshLockedLegTarget();
     void CycleFaultMode();
-    void SelectFaultJoint(int delta);
+    void SelectFaultLeg(int delta);
     void AdjustFaultSeverity(float delta);
     void PrintFaultStatus() const;
 };
