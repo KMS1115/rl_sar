@@ -128,6 +128,9 @@ private:
     std::array<float, 3> fault_release_start_q = {0.0f, 0.0f, 0.0f};
     int fault_release_start_motiontime = 0;
     bool fault_release_transition_active = false;
+    int pending_fault_leg_idx = -1;
+    int fault_switch_settle_start_motiontime = -1;
+    float fault_switch_settle_duration = 0.25f;
 
     std::string GetFaultLegName() const;
     std::array<int, 3> GetFaultLegJointIndices() const;
@@ -137,6 +140,8 @@ private:
     float GetLockedFaultDesiredQ(int leg_joint_offset) const;
     void BeginReleaseTransition(int leg_idx, const std::array<float, 3>& start_q);
     float GetReleasedFaultDesiredQ(int leg_joint_offset, float desired_q) const;
+    bool IsFaultReleaseTransitionComplete() const;
+    void UpdatePendingFaultSwitch();
     void RefreshLockedLegTarget();
     void CycleFaultMode();
     void SelectFaultLeg(int delta);

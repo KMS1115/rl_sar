@@ -84,6 +84,12 @@ bool IsLikelyGamepad(const std::string& device_name, unsigned char axis_count, u
     return axis_count >= 4 && button_count >= 8;
 }
 
+bool IsKnownConfigName(const std::string& name)
+{
+    const std::string lowered = ToLower(name);
+    return lowered == "default" || lowered == "dreamwaq" || lowered == "dreamflex";
+}
+
 const char* FaultModeName(RL_Sim::FaultMode mode)
 {
     switch (mode)
@@ -103,16 +109,32 @@ RL_Sim::RL_Sim(int argc, char **argv)
     // Set static instance pointer early for signal handler
     instance = this;
 
-    if (argc < 3)
+    if (argc < 2)
     {
-        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " robot_name scene_name [config_name]" << std::endl;
+        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " <go2|go2w> [config_name]" << std::endl;
         throw std::runtime_error("Invalid arguments");
     }
-    else
+
+    this->robot_name = argv[1];
+    this->scene_name = "scene";
+    this->config_name = "default";
+
+    if (argc >= 3)
     {
-        this->robot_name = argv[1];
-        this->scene_name = argv[2];
-        this->config_name = (argc > 3) ? argv[3] : "default";
+        const std::string arg2 = argv[2];
+        if (arg2 == "scene")
+        {
+            this->config_name = (argc > 3) ? argv[3] : "default";
+        }
+        else if (IsKnownConfigName(arg2))
+        {
+            this->config_name = arg2;
+        }
+        else
+        {
+            this->scene_name = arg2;
+            this->config_name = (argc > 3) ? argv[3] : "default";
+        }
     }
 
     this->ang_vel_axis = "body";
@@ -270,6 +292,8 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
 {
     if (mj_data)
     {
+        this->UpdatePendingFaultSwitch();
+
         const auto joint_mapping = this->params.Get<std::vector<int>>("joint_mapping");
         const auto joint_names = this->params.Get<std::vector<std::string>>("joint_names");
         const int num_of_dofs = this->params.Get<int>("num_of_dofs");
@@ -522,6 +546,67 @@ float RL_Sim::GetReleasedFaultDesiredQ(int leg_joint_offset, float desired_q) co
     return this->fault_release_start_q[leg_joint_offset] + alpha * (desired_q - this->fault_release_start_q[leg_joint_offset]);
 }
 
+bool RL_Sim::IsFaultReleaseTransitionComplete() const
+{
+    if (!this->fault_release_transition_active || this->fault_lock_ramp_duration <= 0.0f)
+    {
+        return true;
+    }
+
+    const float elapsed = static_cast<float>(this->motiontime - this->fault_release_start_motiontime) * this->params.Get<float>("dt");
+    return elapsed >= this->fault_lock_ramp_duration;
+}
+
+void RL_Sim::UpdatePendingFaultSwitch()
+{
+    if (this->params.Has("fault_switch_settle_duration"))
+    {
+        this->fault_switch_settle_duration = std::max(this->params.Get<float>("fault_switch_settle_duration"), 0.0f);
+    }
+
+    if (this->fault_release_transition_active && this->IsFaultReleaseTransitionComplete())
+    {
+        this->fault_release_transition_active = false;
+        this->fault_release_leg_idx = -1;
+        if (this->pending_fault_leg_idx >= 0)
+        {
+            this->fault_switch_settle_start_motiontime = this->motiontime;
+        }
+        else
+        {
+            this->fault_switch_settle_start_motiontime = -1;
+        }
+    }
+
+    if (this->pending_fault_leg_idx < 0)
+    {
+        return;
+    }
+    if (this->fault_release_transition_active)
+    {
+        return;
+    }
+
+    if (this->fault_switch_settle_start_motiontime < 0)
+    {
+        this->fault_switch_settle_start_motiontime = this->motiontime;
+        return;
+    }
+
+    const float settle_elapsed =
+        static_cast<float>(this->motiontime - this->fault_switch_settle_start_motiontime) * this->params.Get<float>("dt");
+    if (settle_elapsed < this->fault_switch_settle_duration)
+    {
+        return;
+    }
+
+    this->fault_leg_idx = this->pending_fault_leg_idx;
+    this->pending_fault_leg_idx = -1;
+    this->fault_switch_settle_start_motiontime = -1;
+    this->fault_mode = FaultMode::Locked;
+    this->RefreshLockedLegTarget();
+}
+
 void RL_Sim::RefreshLockedLegTarget()
 {
     if (!this->mj_data)
@@ -560,33 +645,47 @@ void RL_Sim::RefreshLockedLegTarget()
 
 void RL_Sim::CycleFaultMode()
 {
-    switch (this->fault_mode)
+    if (this->fault_mode == FaultMode::Locked || this->pending_fault_leg_idx >= 0)
     {
-    case FaultMode::None:
-        this->fault_mode = FaultMode::Locked;
-        this->RefreshLockedLegTarget();
-        break;
-    default:
         if (this->fault_mode == FaultMode::Locked)
         {
             this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
         }
         this->fault_mode = FaultMode::None;
         this->fault_lock_transition_active = false;
-        break;
+        this->pending_fault_leg_idx = -1;
+        this->fault_switch_settle_start_motiontime = -1;
+    }
+    else
+    {
+        this->fault_mode = FaultMode::Locked;
+        this->RefreshLockedLegTarget();
     }
     this->PrintFaultStatus();
 }
 
 void RL_Sim::SelectFaultLeg(int delta)
 {
-    const int prev_leg_idx = this->fault_leg_idx;
-    const auto prev_locked_q = this->fault_locked_q;
-    this->fault_leg_idx = (this->fault_leg_idx + delta + 4) % 4;
+    const int selected_leg_idx = (this->pending_fault_leg_idx >= 0) ? this->pending_fault_leg_idx : this->fault_leg_idx;
+    const int next_leg_idx = (selected_leg_idx + delta + 4) % 4;
     if (this->fault_mode == FaultMode::Locked)
     {
-        this->BeginReleaseTransition(prev_leg_idx, prev_locked_q);
-        this->RefreshLockedLegTarget();
+        if (next_leg_idx != this->fault_leg_idx)
+        {
+            this->pending_fault_leg_idx = next_leg_idx;
+            this->fault_mode = FaultMode::None;
+            this->fault_lock_transition_active = false;
+            this->fault_switch_settle_start_motiontime = -1;
+            this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
+        }
+    }
+    else if (this->pending_fault_leg_idx >= 0)
+    {
+        this->pending_fault_leg_idx = next_leg_idx;
+    }
+    else
+    {
+        this->fault_leg_idx = next_leg_idx;
     }
     this->PrintFaultStatus();
 }
@@ -628,6 +727,10 @@ void RL_Sim::PrintFaultStatus() const
     {
         message << ", release_leg=" << this->fault_release_leg_idx
                 << ", release_s=" << std::fixed << std::setprecision(2) << release_elapsed;
+    }
+    if (this->pending_fault_leg_idx >= 0)
+    {
+        message << ", pending_leg=" << this->pending_fault_leg_idx;
     }
     message << ". Keys: T=cycle fault, Y/U=leg -, +, I/O=severity -, +";
     std::cout << message.str() << std::endl;

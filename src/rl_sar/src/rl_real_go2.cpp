@@ -38,6 +38,12 @@ bool IsCalfJointName(const std::string& joint_name)
     return lowered.find("calf") != std::string::npos || lowered.find("knee") != std::string::npos;
 }
 
+bool IsKnownRobotName(const std::string& name)
+{
+    const std::string lowered = ToLower(name);
+    return lowered == "go2" || lowered == "go2w";
+}
+
 const char* FaultModeName(RL_Real::FaultMode mode)
 {
     switch (mode)
@@ -52,14 +58,18 @@ const char* FaultModeName(RL_Real::FaultMode mode)
 
 RL_Real::RL_Real(int argc, char **argv)
 {
-    bool wheel_mode = false;
+    this->robot_name = "go2";
     this->config_name = "default";
-    for (int i = 2; i < argc; ++i)
+    for (int i = 1; i < argc; ++i)
     {
-        std::string arg = argv[i];
+        const std::string arg = argv[i];
         if (arg == "wheel")
         {
-            wheel_mode = true;
+            this->robot_name = "go2w";
+        }
+        else if (IsKnownRobotName(arg))
+        {
+            this->robot_name = ToLower(arg);
         }
         else
         {
@@ -69,7 +79,6 @@ RL_Real::RL_Real(int argc, char **argv)
 
     // read params from yaml
     this->ang_vel_axis = "body";
-    this->robot_name = wheel_mode ? "go2w" : "go2";
     this->ReadYaml(this->robot_name, "base.yaml");
 
     // auto load FSM by robot_name
@@ -657,6 +666,67 @@ float RL_Real::GetReleasedFaultDesiredQ(int leg_joint_offset, float desired_q) c
     return this->fault_release_start_q[leg_joint_offset] + alpha * (desired_q - this->fault_release_start_q[leg_joint_offset]);
 }
 
+bool RL_Real::IsFaultReleaseTransitionComplete() const
+{
+    if (!this->fault_release_transition_active || this->fault_lock_ramp_duration <= 0.0f)
+    {
+        return true;
+    }
+
+    const float elapsed = static_cast<float>(this->motiontime - this->fault_release_start_motiontime) * this->params.Get<float>("dt");
+    return elapsed >= this->fault_lock_ramp_duration;
+}
+
+void RL_Real::UpdatePendingFaultSwitch()
+{
+    if (this->params.Has("fault_switch_settle_duration"))
+    {
+        this->fault_switch_settle_duration = std::max(this->params.Get<float>("fault_switch_settle_duration"), 0.0f);
+    }
+
+    if (this->fault_release_transition_active && this->IsFaultReleaseTransitionComplete())
+    {
+        this->fault_release_transition_active = false;
+        this->fault_release_leg_idx = -1;
+        if (this->pending_fault_leg_idx >= 0)
+        {
+            this->fault_switch_settle_start_motiontime = this->motiontime;
+        }
+        else
+        {
+            this->fault_switch_settle_start_motiontime = -1;
+        }
+    }
+
+    if (this->pending_fault_leg_idx < 0)
+    {
+        return;
+    }
+    if (this->fault_release_transition_active)
+    {
+        return;
+    }
+
+    if (this->fault_switch_settle_start_motiontime < 0)
+    {
+        this->fault_switch_settle_start_motiontime = this->motiontime;
+        return;
+    }
+
+    const float settle_elapsed =
+        static_cast<float>(this->motiontime - this->fault_switch_settle_start_motiontime) * this->params.Get<float>("dt");
+    if (settle_elapsed < this->fault_switch_settle_duration)
+    {
+        return;
+    }
+
+    this->fault_leg_idx = this->pending_fault_leg_idx;
+    this->pending_fault_leg_idx = -1;
+    this->fault_switch_settle_start_motiontime = -1;
+    this->fault_mode = FaultMode::Locked;
+    this->RefreshLockedLegTarget();
+}
+
 void RL_Real::RefreshLockedLegTarget()
 {
     const auto fault_joint_indices = this->GetFaultLegJointIndices();
@@ -678,33 +748,47 @@ void RL_Real::RefreshLockedLegTarget()
 
 void RL_Real::CycleFaultMode()
 {
-    switch (this->fault_mode)
+    if (this->fault_mode == FaultMode::Locked || this->pending_fault_leg_idx >= 0)
     {
-    case FaultMode::None:
-        this->fault_mode = FaultMode::Locked;
-        this->RefreshLockedLegTarget();
-        break;
-    default:
         if (this->fault_mode == FaultMode::Locked)
         {
             this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
         }
         this->fault_mode = FaultMode::None;
         this->fault_lock_transition_active = false;
-        break;
+        this->pending_fault_leg_idx = -1;
+        this->fault_switch_settle_start_motiontime = -1;
+    }
+    else
+    {
+        this->fault_mode = FaultMode::Locked;
+        this->RefreshLockedLegTarget();
     }
     this->PrintFaultStatus();
 }
 
 void RL_Real::SelectFaultLeg(int delta)
 {
-    const int prev_leg_idx = this->fault_leg_idx;
-    const auto prev_locked_q = this->fault_locked_q;
-    this->fault_leg_idx = (this->fault_leg_idx + delta + 4) % 4;
+    const int selected_leg_idx = (this->pending_fault_leg_idx >= 0) ? this->pending_fault_leg_idx : this->fault_leg_idx;
+    const int next_leg_idx = (selected_leg_idx + delta + 4) % 4;
     if (this->fault_mode == FaultMode::Locked)
     {
-        this->BeginReleaseTransition(prev_leg_idx, prev_locked_q);
-        this->RefreshLockedLegTarget();
+        if (next_leg_idx != this->fault_leg_idx)
+        {
+            this->pending_fault_leg_idx = next_leg_idx;
+            this->fault_mode = FaultMode::None;
+            this->fault_lock_transition_active = false;
+            this->fault_switch_settle_start_motiontime = -1;
+            this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
+        }
+    }
+    else if (this->pending_fault_leg_idx >= 0)
+    {
+        this->pending_fault_leg_idx = next_leg_idx;
+    }
+    else
+    {
+        this->fault_leg_idx = next_leg_idx;
     }
     this->PrintFaultStatus();
 }
@@ -725,6 +809,8 @@ void RL_Real::ApplyFaultCommand(RobotCommand<float> *command)
     {
         return;
     }
+
+    this->UpdatePendingFaultSwitch();
 
     if (this->fault_mode == FaultMode::Locked)
     {
@@ -781,6 +867,10 @@ void RL_Real::PrintFaultStatus() const
         message << ", release_leg=" << this->fault_release_leg_idx
                 << ", release_s=" << std::fixed << std::setprecision(2) << release_elapsed;
     }
+    if (this->pending_fault_leg_idx >= 0)
+    {
+        message << ", pending_leg=" << this->pending_fault_leg_idx;
+    }
     message << ". Keys: LB+A=cycle fault, LB+DPad Left/Right=leg -, +, LB+DPad Down/Up=severity -, +";
     std::cout << message.str() << std::endl;
 }
@@ -797,10 +887,10 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " networkInterface [wheel]" << std::endl;
+        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " <go2|go2w> [config_name]" << std::endl;
         throw std::runtime_error("Invalid arguments");
     }
-    ChannelFactory::Instance()->Init(0, argv[1]);
+    ChannelFactory::Instance()->Init(0);
 
     signal(SIGINT, signalHandler);
     RL_Real rl_sar(argc, argv);

@@ -78,38 +78,36 @@ Available MuJoCo scenes:
 Usage:
 
 ```bash
-./cmake_build/rl_real_go2 <NETWORK_INTERFACE> [wheel] [config_name]
+./cmake_build/rl_real_go2 <go2|go2w> [config_name]
 ```
 
-- If `wheel` is omitted, the robot is `go2`.
-- If `wheel` is present, the robot is `go2w`.
+- DDS/network interface is auto-selected by the SDK; you no longer need to pass `eth0`.
 - If `config_name` is omitted, it defaults to `default`.
-- Argument order matters for `go2w`: put `wheel` before `config_name`.
 
 Examples:
 
 `go2` + `default`
 
 ```bash
-./cmake_build/rl_real_go2 eth0
+./cmake_build/rl_real_go2 go2
 ```
 
 `go2` + `dreamwaq`
 
 ```bash
-./cmake_build/rl_real_go2 eth0 dreamwaq
+./cmake_build/rl_real_go2 go2 dreamwaq
 ```
 
 `go2w` + `default`
 
 ```bash
-./cmake_build/rl_real_go2 eth0 wheel
+./cmake_build/rl_real_go2 go2w
 ```
 
 `go2w` + `dreamwaq`
 
 ```bash
-./cmake_build/rl_real_go2 eth0 wheel dreamwaq
+./cmake_build/rl_real_go2 go2w dreamwaq
 ```
 
 ## MuJoCo
@@ -117,9 +115,10 @@ Examples:
 Usage:
 
 ```bash
-./cmake_build/rl_sim_mujoco <go2|go2w> <scene_name> [config_name]
+./cmake_build/rl_sim_mujoco <go2|go2w> [config_name]
 ```
 
+- `scene_name` defaults to `scene`, so you no longer need to pass it for the standard simulator launch.
 - If `config_name` is omitted, it defaults to `default`.
 - Scene names come from `src/rl_sar_zoo/<robot>_description/mjcf/*.xml`.
 
@@ -128,25 +127,26 @@ Examples:
 `go2` + `default`
 
 ```bash
-./cmake_build/rl_sim_mujoco go2 scene
+./cmake_build/rl_sim_mujoco go2
 ```
 
 `go2` + `dreamwaq`
 
 ```bash
-./cmake_build/rl_sim_mujoco go2 scene dreamwaq
+./cmake_build/rl_sim_mujoco go2 dreamwaq
 ```
 
 `go2` + `dreamflex`
 
 ```bash
-./cmake_build/rl_sim_mujoco go2 scene dreamflex
+./cmake_build/rl_sim_mujoco go2 dreamflex
 ```
 
 Fault injection in MuJoCo:
 
 - Available for every config, including `default`, `dreamwaq`, and `dreamflex`
 - Locked `thigh` / `calf` joints use fixed fold targets from `fault_lock_thigh_q` / `fault_lock_calf_q` in `policy/<robot>/base.yaml`
+- Switching the fault leg is sequential: the old leg is released first, then after the release ramp and a short settle delay the new leg is locked
 - If those keys are absent, the simulator falls back to the joint's `seated_dof_pos`
 - Keyboard:
   - `T`: cycle `none -> locked -> weakened -> none`
@@ -163,18 +163,19 @@ Fault injection on hardware (`rl_real_go2`):
 - `LB + A`: cycle `none -> locked -> weakened -> none`
 - `LB + DPad Left/Right`: select fault joint `- / +`
 - `LB + DPad Down/Up`: adjust severity
+- Fault-leg switching uses the same sequential release-then-lock behavior as MuJoCo
 - Locked mode holds the selected joint at the current joint angle, unless `fault_lock_thigh_q` / `fault_lock_calf_q` is configured in `policy/<robot>/base.yaml`
 
 `go2w` + `default`
 
 ```bash
-./cmake_build/rl_sim_mujoco go2w scene
+./cmake_build/rl_sim_mujoco go2w
 ```
 
 `go2w` + `dreamwaq`
 
 ```bash
-./cmake_build/rl_sim_mujoco go2w scene dreamwaq
+./cmake_build/rl_sim_mujoco go2w dreamwaq
 ```
 
 Terrain examples:
