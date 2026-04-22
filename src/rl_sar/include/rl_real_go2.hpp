@@ -121,7 +121,6 @@ private:
     std::vector<float> mapped_joint_velocities;
     FaultMode fault_mode = FaultMode::None;
     int fault_leg_idx = 0;
-    float fault_lock_half_range = 0.05f;
     std::array<float, 3> fault_locked_q = {0.0f, 0.0f, 0.0f};
     std::array<float, 3> fault_lock_start_q = {0.0f, 0.0f, 0.0f};
     int fault_lock_start_motiontime = 0;
@@ -131,11 +130,14 @@ private:
     float fault_input_debounce_s = 0.3f;
     int fault_release_leg_idx = -1;
     std::array<float, 3> fault_release_start_q = {0.0f, 0.0f, 0.0f};
+    std::array<float, 3> fault_release_target_q = {0.0f, 0.0f, 0.0f};
     int fault_release_start_motiontime = 0;
     bool fault_release_transition_active = false;
     int pending_fault_leg_idx = -1;
     int fault_switch_settle_start_motiontime = -1;
     float fault_switch_settle_duration = 0.25f;
+    float fault_transition_kp = 40.0f;
+    float fault_transition_kd = 1.5f;
 
     std::string GetFaultLegName() const;
     std::array<int, 3> GetFaultLegJointIndices() const;
@@ -143,14 +145,13 @@ private:
     bool TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const;
     void BeginLockedFaultTransition(const std::array<int, 3>& joint_indices, const std::array<float, 3>& target_q);
     float GetLockedFaultDesiredQ(int leg_joint_offset) const;
-    void BeginReleaseTransition(int leg_idx, const std::array<float, 3>& start_q);
-    float GetReleasedFaultDesiredQ(int leg_joint_offset, float desired_q) const;
+    void BeginReleaseTransition(int leg_idx);
+    float GetReleasedFaultDesiredQ(int leg_joint_offset) const;
     bool IsFaultReleaseTransitionComplete() const;
     void UpdatePendingFaultSwitch();
     void RefreshLockedLegTarget();
     void CycleFaultMode();
     void SelectFaultLeg(int delta);
-    void AdjustFaultSeverity(float delta);
     void ApplyFaultCommand(RobotCommand<float> *command);
     void PrintFaultStatus() const;
 };

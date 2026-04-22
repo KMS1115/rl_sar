@@ -318,8 +318,8 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
                         desired_q = this->GetLockedFaultDesiredQ(leg_joint_offset);
                         desired_dq = 0.0f;
                         desired_tau = 0.0f;
-                        desired_kp = std::max(desired_kp, 80.0f);
-                        desired_kd = std::max(desired_kd, 2.0f);
+                        desired_kp = this->fault_transition_kp;
+                        desired_kd = this->fault_transition_kd;
                         break;
                     }
                 }
@@ -331,7 +331,11 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
                 {
                     if (i == release_joint_indices[leg_joint_offset])
                     {
-                        desired_q = this->GetReleasedFaultDesiredQ(leg_joint_offset, desired_q);
+                        desired_q = this->GetReleasedFaultDesiredQ(leg_joint_offset);
+                        desired_dq = 0.0f;
+                        desired_tau = 0.0f;
+                        desired_kp = this->fault_transition_kp;
+                        desired_kd = this->fault_transition_kd;
                         break;
                     }
                 }
@@ -400,19 +404,6 @@ void RL_Sim::RobotControl()
         this->SelectFaultLeg(1);
         this->fault_input_last_motiontime = this->motiontime;
     }
-    if (fault_input_ready &&
-        (this->control.current_keyboard == Input::Keyboard::I || this->control.current_gamepad == Input::Gamepad::LB_DPadDown))
-    {
-        this->AdjustFaultSeverity(-0.01f);
-        this->fault_input_last_motiontime = this->motiontime;
-    }
-    if (fault_input_ready &&
-        (this->control.current_keyboard == Input::Keyboard::O || this->control.current_gamepad == Input::Gamepad::LB_DPadUp))
-    {
-        this->AdjustFaultSeverity(0.01f);
-        this->fault_input_last_motiontime = this->motiontime;
-    }
-
     this->control.ClearInput();
 
     this->SetCommand(&this->robot_command);
@@ -494,10 +485,6 @@ bool RL_Sim::TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) c
 
 void RL_Sim::BeginLockedFaultTransition(const std::array<int, 3>& joint_indices, const std::array<float, 3>& target_q)
 {
-    if (this->params.Has("fault_lock_half_range"))
-    {
-        this->fault_lock_half_range = std::clamp(this->params.Get<float>("fault_lock_half_range"), 0.01f, 0.25f);
-    }
     for (int i = 0; i < 3; ++i)
     {
         this->fault_lock_start_q[i] = this->robot_state.motor_state.q[joint_indices[i]];
@@ -508,6 +495,14 @@ void RL_Sim::BeginLockedFaultTransition(const std::array<int, 3>& joint_indices,
     if (this->params.Has("fault_lock_ramp_duration"))
     {
         this->fault_lock_ramp_duration = std::max(this->params.Get<float>("fault_lock_ramp_duration"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kp"))
+    {
+        this->fault_transition_kp = std::max(this->params.Get<float>("fault_transition_kp"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kd"))
+    {
+        this->fault_transition_kd = std::max(this->params.Get<float>("fault_transition_kd"), 0.0f);
     }
 }
 
@@ -527,23 +522,42 @@ float RL_Sim::GetLockedFaultDesiredQ(int leg_joint_offset) const
     return this->fault_lock_start_q[leg_joint_offset] + alpha * (this->fault_locked_q[leg_joint_offset] - this->fault_lock_start_q[leg_joint_offset]);
 }
 
-void RL_Sim::BeginReleaseTransition(int leg_idx, const std::array<float, 3>& start_q)
+void RL_Sim::BeginReleaseTransition(int leg_idx)
 {
     this->fault_release_leg_idx = leg_idx;
-    this->fault_release_start_q = start_q;
+    const auto joint_indices = this->GetLegJointIndices(leg_idx);
+    const auto default_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
+    for (int i = 0; i < 3; ++i)
+    {
+        this->fault_release_start_q[i] = this->robot_state.motor_state.q[joint_indices[i]];
+        this->fault_release_target_q[i] = default_dof_pos[joint_indices[i]];
+    }
     this->fault_release_start_motiontime = this->motiontime;
     this->fault_release_transition_active = true;
+    if (this->params.Has("fault_lock_ramp_duration"))
+    {
+        this->fault_lock_ramp_duration = std::max(this->params.Get<float>("fault_lock_ramp_duration"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kp"))
+    {
+        this->fault_transition_kp = std::max(this->params.Get<float>("fault_transition_kp"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kd"))
+    {
+        this->fault_transition_kd = std::max(this->params.Get<float>("fault_transition_kd"), 0.0f);
+    }
 }
 
-float RL_Sim::GetReleasedFaultDesiredQ(int leg_joint_offset, float desired_q) const
+float RL_Sim::GetReleasedFaultDesiredQ(int leg_joint_offset) const
 {
     if (!this->fault_release_transition_active || this->fault_lock_ramp_duration <= 0.0f)
     {
-        return desired_q;
+        return this->fault_release_target_q[leg_joint_offset];
     }
     const float elapsed = static_cast<float>(this->motiontime - this->fault_release_start_motiontime) * this->params.Get<float>("dt");
     const float alpha = std::clamp(elapsed / this->fault_lock_ramp_duration, 0.0f, 1.0f);
-    return this->fault_release_start_q[leg_joint_offset] + alpha * (desired_q - this->fault_release_start_q[leg_joint_offset]);
+    return this->fault_release_start_q[leg_joint_offset]
+        + alpha * (this->fault_release_target_q[leg_joint_offset] - this->fault_release_start_q[leg_joint_offset]);
 }
 
 bool RL_Sim::IsFaultReleaseTransitionComplete() const
@@ -649,7 +663,7 @@ void RL_Sim::CycleFaultMode()
     {
         if (this->fault_mode == FaultMode::Locked)
         {
-            this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
+            this->BeginReleaseTransition(this->fault_leg_idx);
         }
         this->fault_mode = FaultMode::None;
         this->fault_lock_transition_active = false;
@@ -676,7 +690,7 @@ void RL_Sim::SelectFaultLeg(int delta)
             this->fault_mode = FaultMode::None;
             this->fault_lock_transition_active = false;
             this->fault_switch_settle_start_motiontime = -1;
-            this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
+            this->BeginReleaseTransition(this->fault_leg_idx);
         }
     }
     else if (this->pending_fault_leg_idx >= 0)
@@ -686,16 +700,6 @@ void RL_Sim::SelectFaultLeg(int delta)
     else
     {
         this->fault_leg_idx = next_leg_idx;
-    }
-    this->PrintFaultStatus();
-}
-
-void RL_Sim::AdjustFaultSeverity(float delta)
-{
-    if (this->fault_mode == FaultMode::Locked)
-    {
-        this->fault_lock_half_range = std::clamp(this->fault_lock_half_range + delta, 0.01f, 0.25f);
-        this->RefreshLockedLegTarget();
     }
     this->PrintFaultStatus();
 }
@@ -732,7 +736,7 @@ void RL_Sim::PrintFaultStatus() const
     {
         message << ", pending_leg=" << this->pending_fault_leg_idx;
     }
-    message << ". Keys: T=cycle fault, Y/U=leg -, +, I/O=severity -, +";
+    message << ". Keys: T=cycle fault, Y/U=leg -, +";
     std::cout << message.str() << std::endl;
 }
 
@@ -918,8 +922,6 @@ void RL_Sim::GetSysJoystick()
     if (this->sys_js_button[4].pressed && this->sys_js_button[3].on_press) this->control.SetGamepad(Input::Gamepad::LB_Y);
     if (this->sys_js_button[4].pressed && this->sys_js_button[9].on_press) this->control.SetGamepad(Input::Gamepad::LB_LStick);
     if (this->sys_js_button[4].pressed && this->sys_js_button[10].on_press) this->control.SetGamepad(Input::Gamepad::LB_RStick);
-    if (this->sys_js_button[4].pressed && this->sys_js_axis[7] < 0) this->control.SetGamepad(Input::Gamepad::LB_DPadUp);
-    if (this->sys_js_button[4].pressed && this->sys_js_axis[7] > 0) this->control.SetGamepad(Input::Gamepad::LB_DPadDown);
     if (this->sys_js_button[4].pressed && this->sys_js_axis[6] > 0) this->control.SetGamepad(Input::Gamepad::LB_DPadLeft);
     if (this->sys_js_button[4].pressed && this->sys_js_axis[6] < 0) this->control.SetGamepad(Input::Gamepad::LB_DPadRight);
     if (this->sys_js_button[5].pressed && this->sys_js_button[0].on_press) this->control.SetGamepad(Input::Gamepad::RB_A);

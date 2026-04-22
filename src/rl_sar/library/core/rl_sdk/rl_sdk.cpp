@@ -417,13 +417,11 @@ void RL::KeyboardInterface()
         case 'f': case 'F': this->control.SetKeyboard(Input::Keyboard::F); break;
         case 'g': case 'G': this->control.SetKeyboard(Input::Keyboard::G); break;
         case 'h': case 'H': this->control.SetKeyboard(Input::Keyboard::H); break;
-        case 'i': case 'I': this->control.SetKeyboard(Input::Keyboard::I); break;
         case 'j': case 'J': this->control.SetKeyboard(Input::Keyboard::J); break;
         case 'k': case 'K': this->control.SetKeyboard(Input::Keyboard::K); break;
         case 'l': case 'L': this->control.SetKeyboard(Input::Keyboard::L); break;
         case 'm': case 'M': this->control.SetKeyboard(Input::Keyboard::M); break;
         case 'n': case 'N': this->control.SetKeyboard(Input::Keyboard::N); break;
-        case 'o': case 'O': this->control.SetKeyboard(Input::Keyboard::O); break;
         case 'p': case 'P': this->control.SetKeyboard(Input::Keyboard::P); break;
         case 'q': case 'Q': this->control.SetKeyboard(Input::Keyboard::Q); break;
         case 'r': case 'R': this->control.SetKeyboard(Input::Keyboard::R); break;

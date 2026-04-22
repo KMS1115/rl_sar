@@ -199,8 +199,6 @@ void RL_Real::GetState(RobotState<float> *state)
     if (curr.L1 && y_on_press) this->control.SetGamepad(Input::Gamepad::LB_Y);
     if (curr.L1 && f1_on_press) this->control.SetGamepad(Input::Gamepad::LB_LStick);
     if (curr.L1 && f2_on_press) this->control.SetGamepad(Input::Gamepad::LB_RStick);
-    if (curr.L1 && up_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadUp);
-    if (curr.L1 && down_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadDown);
     if (curr.L1 && left_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadLeft);
     if (curr.L1 && right_on_press) this->control.SetGamepad(Input::Gamepad::LB_DPadRight);
 
@@ -304,19 +302,6 @@ void RL_Real::RobotControl()
         this->SelectFaultLeg(1);
         this->fault_input_last_motiontime = this->motiontime;
     }
-    if (fault_input_ready &&
-        (this->control.current_keyboard == Input::Keyboard::I || this->control.current_gamepad == Input::Gamepad::LB_DPadDown))
-    {
-        this->AdjustFaultSeverity(-0.01f);
-        this->fault_input_last_motiontime = this->motiontime;
-    }
-    if (fault_input_ready &&
-        (this->control.current_keyboard == Input::Keyboard::O || this->control.current_gamepad == Input::Gamepad::LB_DPadUp))
-    {
-        this->AdjustFaultSeverity(0.01f);
-        this->fault_input_last_motiontime = this->motiontime;
-    }
-
     this->ApplyFaultCommand(&this->robot_command);
 
     this->control.ClearInput();
@@ -615,10 +600,6 @@ bool RL_Real::TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) 
 
 void RL_Real::BeginLockedFaultTransition(const std::array<int, 3>& joint_indices, const std::array<float, 3>& target_q)
 {
-    if (this->params.Has("fault_lock_half_range"))
-    {
-        this->fault_lock_half_range = std::clamp(this->params.Get<float>("fault_lock_half_range"), 0.01f, 0.25f);
-    }
     for (int i = 0; i < 3; ++i)
     {
         this->fault_lock_start_q[i] = this->robot_state.motor_state.q[joint_indices[i]];
@@ -629,6 +610,14 @@ void RL_Real::BeginLockedFaultTransition(const std::array<int, 3>& joint_indices
     if (this->params.Has("fault_lock_ramp_duration"))
     {
         this->fault_lock_ramp_duration = std::max(this->params.Get<float>("fault_lock_ramp_duration"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kp"))
+    {
+        this->fault_transition_kp = std::max(this->params.Get<float>("fault_transition_kp"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kd"))
+    {
+        this->fault_transition_kd = std::max(this->params.Get<float>("fault_transition_kd"), 0.0f);
     }
 }
 
@@ -648,23 +637,42 @@ float RL_Real::GetLockedFaultDesiredQ(int leg_joint_offset) const
     return this->fault_lock_start_q[leg_joint_offset] + alpha * (this->fault_locked_q[leg_joint_offset] - this->fault_lock_start_q[leg_joint_offset]);
 }
 
-void RL_Real::BeginReleaseTransition(int leg_idx, const std::array<float, 3>& start_q)
+void RL_Real::BeginReleaseTransition(int leg_idx)
 {
     this->fault_release_leg_idx = leg_idx;
-    this->fault_release_start_q = start_q;
+    const auto joint_indices = this->GetLegJointIndices(leg_idx);
+    const auto default_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
+    for (int i = 0; i < 3; ++i)
+    {
+        this->fault_release_start_q[i] = this->robot_state.motor_state.q[joint_indices[i]];
+        this->fault_release_target_q[i] = default_dof_pos[joint_indices[i]];
+    }
     this->fault_release_start_motiontime = this->motiontime;
     this->fault_release_transition_active = true;
+    if (this->params.Has("fault_lock_ramp_duration"))
+    {
+        this->fault_lock_ramp_duration = std::max(this->params.Get<float>("fault_lock_ramp_duration"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kp"))
+    {
+        this->fault_transition_kp = std::max(this->params.Get<float>("fault_transition_kp"), 0.0f);
+    }
+    if (this->params.Has("fault_transition_kd"))
+    {
+        this->fault_transition_kd = std::max(this->params.Get<float>("fault_transition_kd"), 0.0f);
+    }
 }
 
-float RL_Real::GetReleasedFaultDesiredQ(int leg_joint_offset, float desired_q) const
+float RL_Real::GetReleasedFaultDesiredQ(int leg_joint_offset) const
 {
     if (!this->fault_release_transition_active || this->fault_lock_ramp_duration <= 0.0f)
     {
-        return desired_q;
+        return this->fault_release_target_q[leg_joint_offset];
     }
     const float elapsed = static_cast<float>(this->motiontime - this->fault_release_start_motiontime) * this->params.Get<float>("dt");
     const float alpha = std::clamp(elapsed / this->fault_lock_ramp_duration, 0.0f, 1.0f);
-    return this->fault_release_start_q[leg_joint_offset] + alpha * (desired_q - this->fault_release_start_q[leg_joint_offset]);
+    return this->fault_release_start_q[leg_joint_offset]
+        + alpha * (this->fault_release_target_q[leg_joint_offset] - this->fault_release_start_q[leg_joint_offset]);
 }
 
 bool RL_Real::IsFaultReleaseTransitionComplete() const
@@ -753,7 +761,7 @@ void RL_Real::CycleFaultMode()
     {
         if (this->fault_mode == FaultMode::Locked)
         {
-            this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
+            this->BeginReleaseTransition(this->fault_leg_idx);
         }
         this->fault_mode = FaultMode::None;
         this->fault_lock_transition_active = false;
@@ -780,7 +788,7 @@ void RL_Real::SelectFaultLeg(int delta)
             this->fault_mode = FaultMode::None;
             this->fault_lock_transition_active = false;
             this->fault_switch_settle_start_motiontime = -1;
-            this->BeginReleaseTransition(this->fault_leg_idx, this->fault_locked_q);
+            this->BeginReleaseTransition(this->fault_leg_idx);
         }
     }
     else if (this->pending_fault_leg_idx >= 0)
@@ -790,16 +798,6 @@ void RL_Real::SelectFaultLeg(int delta)
     else
     {
         this->fault_leg_idx = next_leg_idx;
-    }
-    this->PrintFaultStatus();
-}
-
-void RL_Real::AdjustFaultSeverity(float delta)
-{
-    if (this->fault_mode == FaultMode::Locked)
-    {
-        this->fault_lock_half_range = std::clamp(this->fault_lock_half_range + delta, 0.01f, 0.25f);
-        this->RefreshLockedLegTarget();
     }
     this->PrintFaultStatus();
 }
@@ -816,16 +814,14 @@ void RL_Real::ApplyFaultCommand(RobotCommand<float> *command)
     if (this->fault_mode == FaultMode::Locked)
     {
         const auto fault_joint_indices = this->GetFaultLegJointIndices();
-        const auto fixed_kp = this->params.Get<std::vector<float>>("fixed_kp");
-        const auto fixed_kd = this->params.Get<std::vector<float>>("fixed_kd");
         for (int leg_joint_offset = 0; leg_joint_offset < 3; ++leg_joint_offset)
         {
             const int idx = fault_joint_indices[leg_joint_offset];
             command->motor_command.q[idx] = this->GetLockedFaultDesiredQ(leg_joint_offset);
             command->motor_command.dq[idx] = 0.0f;
             command->motor_command.tau[idx] = 0.0f;
-            command->motor_command.kp[idx] = std::max(command->motor_command.kp[idx], fixed_kp[idx]);
-            command->motor_command.kd[idx] = std::max(command->motor_command.kd[idx], fixed_kd[idx]);
+            command->motor_command.kp[idx] = this->fault_transition_kp;
+            command->motor_command.kd[idx] = this->fault_transition_kd;
         }
     }
     if (this->fault_release_transition_active)
@@ -834,7 +830,11 @@ void RL_Real::ApplyFaultCommand(RobotCommand<float> *command)
         for (int leg_joint_offset = 0; leg_joint_offset < 3; ++leg_joint_offset)
         {
             const int idx = release_joint_indices[leg_joint_offset];
-            command->motor_command.q[idx] = this->GetReleasedFaultDesiredQ(leg_joint_offset, command->motor_command.q[idx]);
+            command->motor_command.q[idx] = this->GetReleasedFaultDesiredQ(leg_joint_offset);
+            command->motor_command.dq[idx] = 0.0f;
+            command->motor_command.tau[idx] = 0.0f;
+            command->motor_command.kp[idx] = this->fault_transition_kp;
+            command->motor_command.kd[idx] = this->fault_transition_kd;
         }
     }
 }
@@ -872,7 +872,7 @@ void RL_Real::PrintFaultStatus() const
     {
         message << ", pending_leg=" << this->pending_fault_leg_idx;
     }
-    message << ". Keys: LB+A=cycle fault, LB+DPad Left/Right=leg -, +, LB+DPad Down/Up=severity -, +";
+    message << ". Keys: LB+A=cycle fault, LB+DPad Left/Right=leg -, +";
     std::cout << message.str() << std::endl;
 }
 

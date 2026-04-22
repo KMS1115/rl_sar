@@ -88,8 +88,8 @@ namespace Input
     enum class Keyboard
     {
         None = 0,
-        A, B, C, D, E, F, G, H, I, J, K, L, M,
-        N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+        A, B, C, D, E, F, G, H, J, K, L, M,
+        N, P, Q, R, S, T, U, V, W, X, Y, Z,
         Num0, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9,
         Space, Enter, Escape,
         Up, Down, Left, Right
@@ -105,7 +105,7 @@ namespace Input
     {
         None = 0,
         A, B, X, Y, LB, RB, LStick, RStick, DPadUp, DPadDown, DPadLeft, DPadRight,
-        LB_A, LB_B, LB_X, LB_Y, LB_LStick, LB_RStick, LB_DPadUp, LB_DPadDown, LB_DPadLeft, LB_DPadRight,
+        LB_A, LB_B, LB_X, LB_Y, LB_LStick, LB_RStick, LB_DPadLeft, LB_DPadRight,
         RB_A, RB_B, RB_X, RB_Y, RB_LStick, RB_RStick, RB_DPadUp, RB_DPadDown, RB_DPadLeft, RB_DPadRight,
         LB_RB, L2_R2
     };
