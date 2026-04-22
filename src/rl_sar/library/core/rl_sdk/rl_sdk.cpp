@@ -59,6 +59,24 @@ void RL::StateController(const RobotState<float>* state, RobotCommand<float>* co
         this->control.navigation_mode = !this->control.navigation_mode;
         std::cout << std::endl << LOGGER::INFO << "Navigation mode: " << (this->control.navigation_mode ? "ON" : "OFF") << std::endl;
     }
+
+    this->ClampControlCommands();
+}
+
+float RL::GetCommandLimit(const std::string& key, float default_value) const
+{
+    return std::max(this->params.Get<float>(key, default_value), 0.0f);
+}
+
+void RL::ClampControlCommands()
+{
+    const float max_cmd_x = this->GetCommandLimit("max_cmd_x");
+    const float max_cmd_y = this->GetCommandLimit("max_cmd_y");
+    const float max_cmd_yaw = this->GetCommandLimit("max_cmd_yaw");
+
+    this->control.x = std::clamp(this->control.x, -max_cmd_x, max_cmd_x);
+    this->control.y = std::clamp(this->control.y, -max_cmd_y, max_cmd_y);
+    this->control.yaw = std::clamp(this->control.yaw, -max_cmd_yaw, max_cmd_yaw);
 }
 
 std::vector<float> RL::ComputeObservation()
@@ -212,6 +230,7 @@ void RL::InitControl()
     this->control.x = 0.0f;
     this->control.y = 0.0f;
     this->control.yaw = 0.0f;
+    this->ClampControlCommands();
 }
 
 void RL::InitJointNum(size_t num_joints)

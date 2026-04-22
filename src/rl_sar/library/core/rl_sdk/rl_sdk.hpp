@@ -230,6 +230,8 @@ public:
     // control
     Control control;
     void KeyboardInterface();
+    float GetCommandLimit(const std::string& key, float default_value = 1.0f) const;
+    void ClampControlCommands();
 
     // history buffer
     ObservationBuffer history_obs_buf;

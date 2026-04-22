@@ -943,9 +943,10 @@ void RL_Sim::GetSysJoystick()
 
     if (has_input)
     {
-        this->control.x = ly;
-        this->control.y = lx;
-        this->control.yaw = rx;
+        this->control.x = ly * this->GetCommandLimit("max_cmd_x");
+        this->control.y = lx * this->GetCommandLimit("max_cmd_y");
+        this->control.yaw = rx * this->GetCommandLimit("max_cmd_yaw");
+        this->ClampControlCommands();
         this->sys_js_active = true;
     }
     else if (this->sys_js_active)

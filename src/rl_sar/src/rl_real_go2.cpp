@@ -218,9 +218,10 @@ void RL_Real::GetState(RobotState<float> *state)
     if (curr.L1 && curr.R1 && !(prev.L1 && prev.R1)) this->control.SetGamepad(Input::Gamepad::LB_RB);
     if (l2r2_on_press) this->control.SetGamepad(Input::Gamepad::L2_R2);
 
-    this->control.x = this->joystick.ly();
-    this->control.y = -this->joystick.lx();
-    this->control.yaw = -this->joystick.rx();
+    this->control.x = this->joystick.ly() * this->GetCommandLimit("max_cmd_x");
+    this->control.y = -this->joystick.lx() * this->GetCommandLimit("max_cmd_y");
+    this->control.yaw = -this->joystick.rx() * this->GetCommandLimit("max_cmd_yaw");
+    this->ClampControlCommands();
 
     state->imu.quaternion[0] = this->unitree_low_state.imu_state().quaternion()[0]; // w
     state->imu.quaternion[1] = this->unitree_low_state.imu_state().quaternion()[1]; // x
