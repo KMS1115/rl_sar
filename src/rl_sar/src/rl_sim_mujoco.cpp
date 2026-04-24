@@ -512,14 +512,7 @@ float RL_Sim::GetLockedFaultDesiredQ(int leg_joint_offset) const
     {
         return 0.0f;
     }
-    if (!this->fault_lock_transition_active || this->fault_lock_ramp_duration <= 0.0f)
-    {
-        return this->fault_locked_q[leg_joint_offset];
-    }
-
-    const float elapsed = static_cast<float>(this->motiontime - this->fault_lock_start_motiontime) * this->params.Get<float>("dt");
-    const float alpha = std::clamp(elapsed / this->fault_lock_ramp_duration, 0.0f, 1.0f);
-    return this->fault_lock_start_q[leg_joint_offset] + alpha * (this->fault_locked_q[leg_joint_offset] - this->fault_lock_start_q[leg_joint_offset]);
+    return this->fault_locked_q[leg_joint_offset];
 }
 
 void RL_Sim::BeginReleaseTransition(int leg_idx)
