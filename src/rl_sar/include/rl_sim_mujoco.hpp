@@ -66,6 +66,13 @@ public:
         Locked,
     };
 
+    enum class FaultReleasePhase
+    {
+        None = 0,
+        ToStand,
+        ToPolicy,
+    };
+
     std::unique_ptr<mj::Simulate> sim;
     static RL_Sim* instance;
 
@@ -128,9 +135,12 @@ private:
     std::array<float, 3> fault_release_target_q = {0.0f, 0.0f, 0.0f};
     int fault_release_start_motiontime = 0;
     bool fault_release_transition_active = false;
+    FaultReleasePhase fault_release_phase = FaultReleasePhase::None;
     int pending_fault_leg_idx = -1;
     int fault_switch_settle_start_motiontime = -1;
     float fault_switch_settle_duration = 0.25f;
+    float fault_release_to_stand_duration = 0.5f;
+    float fault_return_to_policy_duration = 0.35f;
     float fault_transition_kp = 40.0f;
     float fault_transition_kd = 1.5f;
 
@@ -140,13 +150,15 @@ private:
     bool TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const;
     void BeginLockedFaultTransition(const std::array<int, 3>& joint_indices, const std::array<float, 3>& target_q);
     float GetLockedFaultDesiredQ(int leg_joint_offset) const;
-    void BeginReleaseTransition(int leg_idx);
+    void BeginReleaseTransition(int leg_idx, const RobotCommand<float>* command);
     float GetReleasedFaultDesiredQ(int leg_joint_offset) const;
+    float GetFaultReleasePhaseDuration() const;
     bool IsFaultReleaseTransitionComplete() const;
-    void UpdatePendingFaultSwitch();
+    void StartPolicyResumeTransition(const RobotCommand<float>* command);
+    void UpdatePendingFaultSwitch(const RobotCommand<float>* command);
     void RefreshLockedLegTarget();
-    void CycleFaultMode();
-    void SelectFaultLeg(int delta);
+    void CycleFaultMode(const RobotCommand<float>* command);
+    void SelectFaultLeg(int delta, const RobotCommand<float>* command);
     void PrintFaultStatus() const;
 };
 

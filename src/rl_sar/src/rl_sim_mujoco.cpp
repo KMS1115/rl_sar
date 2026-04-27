@@ -100,6 +100,12 @@ const char* FaultModeName(RL_Sim::FaultMode mode)
         return "none";
     }
 }
+
+bool IsFaultOverrideSuppressed(const RL_Sim& rl)
+{
+    return rl.fsm.current_state_ &&
+           rl.fsm.current_state_->GetStateName() == "RLFSMStatePassive";
+}
 }
 
 RL_Sim* RL_Sim::instance = nullptr;
@@ -292,7 +298,11 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
 {
     if (mj_data)
     {
-        this->UpdatePendingFaultSwitch();
+        const bool suppress_fault_override = IsFaultOverrideSuppressed(*this);
+        if (!suppress_fault_override)
+        {
+            this->UpdatePendingFaultSwitch(command);
+        }
 
         const auto joint_mapping = this->params.Get<std::vector<int>>("joint_mapping");
         const auto joint_names = this->params.Get<std::vector<std::string>>("joint_names");
@@ -308,7 +318,7 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
             float desired_kp = command->motor_command.kp[i];
             float desired_kd = command->motor_command.kd[i];
 
-            if (this->fault_mode == FaultMode::Locked)
+            if (!suppress_fault_override && this->fault_mode == FaultMode::Locked)
             {
                 const auto fault_joint_indices = this->GetFaultLegJointIndices();
                 for (int leg_joint_offset = 0; leg_joint_offset < 3; ++leg_joint_offset)
@@ -324,7 +334,7 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
                     }
                 }
             }
-            if (this->fault_release_transition_active)
+            if (!suppress_fault_override && this->fault_release_transition_active)
             {
                 const auto release_joint_indices = this->GetLegJointIndices(this->fault_release_leg_idx);
                 for (int leg_joint_offset = 0; leg_joint_offset < 3; ++leg_joint_offset)
@@ -389,19 +399,19 @@ void RL_Sim::RobotControl()
     if (fault_input_ready &&
         (this->control.current_keyboard == Input::Keyboard::T || this->control.current_gamepad == Input::Gamepad::LB_A))
     {
-        this->CycleFaultMode();
+        this->CycleFaultMode(&this->robot_command);
         this->fault_input_last_motiontime = this->motiontime;
     }
     if (fault_input_ready &&
         (this->control.current_keyboard == Input::Keyboard::Y || this->control.current_gamepad == Input::Gamepad::LB_DPadLeft))
     {
-        this->SelectFaultLeg(-1);
+        this->SelectFaultLeg(-1, &this->robot_command);
         this->fault_input_last_motiontime = this->motiontime;
     }
     if (fault_input_ready &&
         (this->control.current_keyboard == Input::Keyboard::U || this->control.current_gamepad == Input::Gamepad::LB_DPadRight))
     {
-        this->SelectFaultLeg(1);
+        this->SelectFaultLeg(1, &this->robot_command);
         this->fault_input_last_motiontime = this->motiontime;
     }
     this->control.ClearInput();
@@ -512,24 +522,44 @@ float RL_Sim::GetLockedFaultDesiredQ(int leg_joint_offset) const
     {
         return 0.0f;
     }
-    return this->fault_locked_q[leg_joint_offset];
+
+    if (!this->fault_lock_transition_active || this->fault_lock_ramp_duration <= 0.0f)
+    {
+        return this->fault_locked_q[leg_joint_offset];
+    }
+
+    const float elapsed = static_cast<float>(this->motiontime - this->fault_lock_start_motiontime) * this->params.Get<float>("dt");
+    const float alpha = std::clamp(elapsed / this->fault_lock_ramp_duration, 0.0f, 1.0f);
+    return this->fault_lock_start_q[leg_joint_offset]
+        + alpha * (this->fault_locked_q[leg_joint_offset] - this->fault_lock_start_q[leg_joint_offset]);
 }
 
-void RL_Sim::BeginReleaseTransition(int leg_idx)
+void RL_Sim::BeginReleaseTransition(int leg_idx, const RobotCommand<float>* command)
 {
     this->fault_release_leg_idx = leg_idx;
     const auto joint_indices = this->GetLegJointIndices(leg_idx);
-    const auto default_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
+    const auto stand_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
     for (int i = 0; i < 3; ++i)
     {
         this->fault_release_start_q[i] = this->robot_state.motor_state.q[joint_indices[i]];
-        this->fault_release_target_q[i] = default_dof_pos[joint_indices[i]];
+        this->fault_release_target_q[i] = stand_dof_pos[joint_indices[i]];
     }
     this->fault_release_start_motiontime = this->motiontime;
     this->fault_release_transition_active = true;
+    this->fault_release_phase = FaultReleasePhase::ToStand;
     if (this->params.Has("fault_lock_ramp_duration"))
     {
         this->fault_lock_ramp_duration = std::max(this->params.Get<float>("fault_lock_ramp_duration"), 0.0f);
+    }
+    if (this->params.Has("fault_release_to_stand_duration"))
+    {
+        this->fault_release_to_stand_duration =
+            std::max(this->params.Get<float>("fault_release_to_stand_duration"), 0.0f);
+    }
+    if (this->params.Has("fault_return_to_policy_duration"))
+    {
+        this->fault_return_to_policy_duration =
+            std::max(this->params.Get<float>("fault_return_to_policy_duration"), 0.0f);
     }
     if (this->params.Has("fault_transition_kp"))
     {
@@ -543,53 +573,78 @@ void RL_Sim::BeginReleaseTransition(int leg_idx)
 
 float RL_Sim::GetReleasedFaultDesiredQ(int leg_joint_offset) const
 {
-    if (!this->fault_release_transition_active || this->fault_lock_ramp_duration <= 0.0f)
+    const float duration = this->GetFaultReleasePhaseDuration();
+    if (!this->fault_release_transition_active || duration <= 0.0f)
     {
         return this->fault_release_target_q[leg_joint_offset];
     }
     const float elapsed = static_cast<float>(this->motiontime - this->fault_release_start_motiontime) * this->params.Get<float>("dt");
-    const float alpha = std::clamp(elapsed / this->fault_lock_ramp_duration, 0.0f, 1.0f);
+    const float alpha = std::clamp(elapsed / duration, 0.0f, 1.0f);
     return this->fault_release_start_q[leg_joint_offset]
         + alpha * (this->fault_release_target_q[leg_joint_offset] - this->fault_release_start_q[leg_joint_offset]);
 }
 
+float RL_Sim::GetFaultReleasePhaseDuration() const
+{
+    if (this->fault_release_phase == FaultReleasePhase::ToStand)
+    {
+        return this->fault_release_to_stand_duration;
+    }
+    if (this->fault_release_phase == FaultReleasePhase::ToPolicy)
+    {
+        return this->fault_return_to_policy_duration;
+    }
+    return 0.0f;
+}
+
 bool RL_Sim::IsFaultReleaseTransitionComplete() const
 {
-    if (!this->fault_release_transition_active || this->fault_lock_ramp_duration <= 0.0f)
+    const float duration = this->GetFaultReleasePhaseDuration();
+    if (!this->fault_release_transition_active || duration <= 0.0f)
     {
         return true;
     }
 
     const float elapsed = static_cast<float>(this->motiontime - this->fault_release_start_motiontime) * this->params.Get<float>("dt");
-    return elapsed >= this->fault_lock_ramp_duration;
+    return elapsed >= duration;
 }
 
-void RL_Sim::UpdatePendingFaultSwitch()
+void RL_Sim::StartPolicyResumeTransition(const RobotCommand<float>* command)
 {
+    if (this->fault_release_leg_idx < 0)
+    {
+        this->fault_release_transition_active = false;
+        this->fault_release_phase = FaultReleasePhase::None;
+        return;
+    }
+
+    const auto joint_indices = this->GetLegJointIndices(this->fault_release_leg_idx);
+    const auto default_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
+    for (int i = 0; i < 3; ++i)
+    {
+        this->fault_release_start_q[i] = this->fault_release_target_q[i];
+        if (command != nullptr && joint_indices[i] < static_cast<int>(command->motor_command.q.size()))
+        {
+            this->fault_release_target_q[i] = command->motor_command.q[joint_indices[i]];
+        }
+        else
+        {
+            this->fault_release_target_q[i] = default_dof_pos[joint_indices[i]];
+        }
+    }
+    this->fault_release_start_motiontime = this->motiontime;
+    this->fault_release_phase = FaultReleasePhase::ToPolicy;
+}
+
+void RL_Sim::UpdatePendingFaultSwitch(const RobotCommand<float>* command)
+{
+    (void)command;
     if (this->params.Has("fault_switch_settle_duration"))
     {
         this->fault_switch_settle_duration = std::max(this->params.Get<float>("fault_switch_settle_duration"), 0.0f);
     }
 
-    if (this->fault_release_transition_active && this->IsFaultReleaseTransitionComplete())
-    {
-        this->fault_release_transition_active = false;
-        this->fault_release_leg_idx = -1;
-        if (this->pending_fault_leg_idx >= 0)
-        {
-            this->fault_switch_settle_start_motiontime = this->motiontime;
-        }
-        else
-        {
-            this->fault_switch_settle_start_motiontime = -1;
-        }
-    }
-
     if (this->pending_fault_leg_idx < 0)
-    {
-        return;
-    }
-    if (this->fault_release_transition_active)
     {
         return;
     }
@@ -650,16 +705,16 @@ void RL_Sim::RefreshLockedLegTarget()
     this->BeginLockedFaultTransition(fault_joint_indices, configured_target_q);
 }
 
-void RL_Sim::CycleFaultMode()
+void RL_Sim::CycleFaultMode(const RobotCommand<float>* command)
 {
+    (void)command;
     if (this->fault_mode == FaultMode::Locked || this->pending_fault_leg_idx >= 0)
     {
-        if (this->fault_mode == FaultMode::Locked)
-        {
-            this->BeginReleaseTransition(this->fault_leg_idx);
-        }
         this->fault_mode = FaultMode::None;
         this->fault_lock_transition_active = false;
+        this->fault_release_transition_active = false;
+        this->fault_release_phase = FaultReleasePhase::None;
+        this->fault_release_leg_idx = -1;
         this->pending_fault_leg_idx = -1;
         this->fault_switch_settle_start_motiontime = -1;
     }
@@ -671,8 +726,9 @@ void RL_Sim::CycleFaultMode()
     this->PrintFaultStatus();
 }
 
-void RL_Sim::SelectFaultLeg(int delta)
+void RL_Sim::SelectFaultLeg(int delta, const RobotCommand<float>* command)
 {
+    (void)command;
     const int selected_leg_idx = (this->pending_fault_leg_idx >= 0) ? this->pending_fault_leg_idx : this->fault_leg_idx;
     const int next_leg_idx = (selected_leg_idx + delta + 4) % 4;
     if (this->fault_mode == FaultMode::Locked)
@@ -682,8 +738,10 @@ void RL_Sim::SelectFaultLeg(int delta)
             this->pending_fault_leg_idx = next_leg_idx;
             this->fault_mode = FaultMode::None;
             this->fault_lock_transition_active = false;
-            this->fault_switch_settle_start_motiontime = -1;
-            this->BeginReleaseTransition(this->fault_leg_idx);
+            this->fault_release_transition_active = false;
+            this->fault_release_phase = FaultReleasePhase::None;
+            this->fault_release_leg_idx = -1;
+            this->fault_switch_settle_start_motiontime = this->motiontime;
         }
     }
     else if (this->pending_fault_leg_idx >= 0)
