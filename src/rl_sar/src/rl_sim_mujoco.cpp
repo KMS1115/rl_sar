@@ -84,10 +84,17 @@ bool IsLikelyGamepad(const std::string& device_name, unsigned char axis_count, u
     return axis_count >= 4 && button_count >= 8;
 }
 
-bool IsKnownConfigName(const std::string& name)
+bool IsKnownConfigName(const std::string& robot_name, const std::string& name)
 {
     const std::string lowered = ToLower(name);
-    return lowered == "default" || lowered == "dreamwaq" || lowered == "dreamflex";
+    if (lowered.empty())
+    {
+        return false;
+    }
+
+    const std::filesystem::path config_path =
+        std::filesystem::path(POLICY_DIR) / ToLower(robot_name) / lowered / "config.yaml";
+    return std::filesystem::exists(config_path);
 }
 
 const char* FaultModeName(RL_Sim::FaultMode mode)
@@ -132,7 +139,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
         {
             this->config_name = (argc > 3) ? argv[3] : "default";
         }
-        else if (IsKnownConfigName(arg2))
+        else if (IsKnownConfigName(this->robot_name, arg2))
         {
             this->config_name = arg2;
         }

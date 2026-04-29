@@ -64,9 +64,10 @@ Available robots:
 
 Available controller configs:
 
-- `default`
-- `dreamwaq`
-- `dreamflex`
+- `default` (`go2`, `go2w`)
+- `dreamwaq` (`go2`, `go2w`)
+- `dreamflex` (`go2` only)
+- `footstand` (`go2w` only)
 
 Available MuJoCo scenes:
 
@@ -108,6 +109,12 @@ Examples:
 
 ```bash
 ./cmake_build/rl_real_go2 go2w dreamwaq
+```
+
+`go2w` + `footstand`
+
+```bash
+./cmake_build/rl_real_go2 go2w footstand
 ```
 
 ## MuJoCo
@@ -178,6 +185,12 @@ Fault injection on hardware (`rl_real_go2`):
 ./cmake_build/rl_sim_mujoco go2w dreamwaq
 ```
 
+`go2w` + `footstand`
+
+```bash
+./cmake_build/rl_sim_mujoco go2w footstand
+```
+
 Terrain examples:
 
 ```bash
@@ -199,6 +212,7 @@ Policy/config lookup:
   - `go2 + dreamflex` -> `policy/go2/dreamflex/`
   - `go2w + default` -> `policy/go2w/default/`
   - `go2w + dreamwaq` -> `policy/go2w/dreamwaq/`
+  - `go2w + footstand` -> `policy/go2w/footstand/`
 
 ## Notes
 
