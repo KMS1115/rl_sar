@@ -83,6 +83,34 @@ std::vector<float> ONNXModel::forward(const std::vector<std::vector<float>>& inp
         {
             const auto& input = inputs[i];
             const auto& input_shape = input_shapes_.at(i);
+            size_t expected_size = 1;
+            for (auto dim : input_shape)
+            {
+                if (dim > 0)
+                {
+                    expected_size *= static_cast<size_t>(dim);
+                }
+            }
+            if (input.size() != expected_size)
+            {
+                throw std::runtime_error(
+                    "input '" + input_node_names_[i] + "' shape mismatch: expected "
+                    + std::to_string(expected_size) + " from shape ["
+                    + [&input_shape]() {
+                        std::string s;
+                        for (size_t k = 0; k < input_shape.size(); ++k)
+                        {
+                            if (k > 0)
+                            {
+                                s += ", ";
+                            }
+                            s += std::to_string(input_shape[k]);
+                        }
+                        return s;
+                    }()
+                    + "], got " + std::to_string(input.size())
+                );
+            }
             input_tensors.push_back(
                 Ort::Value::CreateTensor<float>(
                     memory_info_,
