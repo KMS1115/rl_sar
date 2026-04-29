@@ -232,6 +232,10 @@ public:
     void KeyboardInterface();
     float GetCommandLimit(const std::string& key, float default_value = 1.0f) const;
     void ClampControlCommands();
+    std::string GetObservationFrame() const;
+    std::string GetCommandFrame() const;
+    std::vector<float> AdaptRootVectorToObservationFrame(const std::vector<float>& vec_body) const;
+    std::vector<float> AdaptCommandToPolicyFrame(const std::vector<float>& command) const;
 
     // history buffer
     ObservationBuffer history_obs_buf;

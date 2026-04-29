@@ -3,6 +3,10 @@
 
 go2w/footstand:
   model_name: "policy.onnx"
+  # Rear-footstand policy frame:
+  # x -> body -z, y -> body +y, yaw -> rotation around body +x.
+  observation_frame: "footstand_rear"
+  command_frame: "footstand_rear"
   num_observations: 57
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: []

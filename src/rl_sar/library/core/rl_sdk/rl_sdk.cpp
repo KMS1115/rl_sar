@@ -5,6 +5,27 @@
 
 #include "rl_sdk.hpp"
 
+namespace
+{
+std::string ToLowerCopy(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
+
+std::vector<float> RearFootstandFrameFromBody(const std::vector<float>& vec_body)
+{
+    if (vec_body.size() < 3)
+    {
+        return vec_body;
+    }
+
+    return {-vec_body[2], vec_body[1], vec_body[0]};
+}
+}
+
 void RL::StateController(const RobotState<float>* state, RobotCommand<float>* command)
 {
     auto updateState = [&](std::shared_ptr<FSMState> statePtr)
@@ -68,6 +89,40 @@ float RL::GetCommandLimit(const std::string& key, float default_value) const
     return std::max(this->params.Get<float>(key, default_value), 0.0f);
 }
 
+std::string RL::GetObservationFrame() const
+{
+    return ToLowerCopy(this->params.Get<std::string>("observation_frame", "body"));
+}
+
+std::string RL::GetCommandFrame() const
+{
+    return ToLowerCopy(this->params.Get<std::string>("command_frame", "body"));
+}
+
+std::vector<float> RL::AdaptRootVectorToObservationFrame(const std::vector<float>& vec_body) const
+{
+    if (GetObservationFrame() == "footstand_rear")
+    {
+        return RearFootstandFrameFromBody(vec_body);
+    }
+    return vec_body;
+}
+
+std::vector<float> RL::AdaptCommandToPolicyFrame(const std::vector<float>& command) const
+{
+    const std::string command_frame = GetCommandFrame();
+    const std::string observation_frame = GetObservationFrame();
+
+    // Planar commands are already entered in the policy frame semantics.
+    // For footstand_rear this means:
+    // x -> rear-footstand forward, y -> rear-footstand lateral, yaw -> rear-footstand yaw.
+    if (command_frame != observation_frame)
+    {
+        return command;
+    }
+    return command;
+}
+
 void RL::ClampControlCommands()
 {
     const float max_cmd_x = this->GetCommandLimit("max_cmd_x");
@@ -88,7 +143,7 @@ std::vector<float> RL::ComputeObservation()
         // ============= Base Observations =============
         if (observation == "lin_vel")
         {
-            obs_list.push_back(this->obs.lin_vel * this->params.Get<float>("lin_vel_scale"));
+            obs_list.push_back(AdaptRootVectorToObservationFrame(this->obs.lin_vel) * this->params.Get<float>("lin_vel_scale"));
         }
         else if (observation == "ang_vel")
         {
@@ -96,20 +151,23 @@ std::vector<float> RL::ComputeObservation()
             // In ROS2 Gazebo, mujoco and real robot, the coordinate system for angular velocity is in the body coordinate system.
             if (this->ang_vel_axis == "body")
             {
-                obs_list.push_back(this->obs.ang_vel * this->params.Get<float>("ang_vel_scale"));
+                obs_list.push_back(AdaptRootVectorToObservationFrame(this->obs.ang_vel) * this->params.Get<float>("ang_vel_scale"));
             }
             else if (this->ang_vel_axis == "world")
             {
-                obs_list.push_back(QuatRotateInverse(this->obs.base_quat, this->obs.ang_vel) * this->params.Get<float>("ang_vel_scale"));
+                obs_list.push_back(
+                    AdaptRootVectorToObservationFrame(QuatRotateInverse(this->obs.base_quat, this->obs.ang_vel))
+                    * this->params.Get<float>("ang_vel_scale")
+                );
             }
         }
         else if (observation == "gravity_vec")
         {
-            obs_list.push_back(QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec));
+            obs_list.push_back(AdaptRootVectorToObservationFrame(QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec)));
         }
         else if (observation == "commands")
         {
-            obs_list.push_back(this->obs.commands * this->params.Get<std::vector<float>>("commands_scale"));
+            obs_list.push_back(AdaptCommandToPolicyFrame(this->obs.commands) * this->params.Get<std::vector<float>>("commands_scale"));
         }
         else if (observation == "dof_pos")
         {
