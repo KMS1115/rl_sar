@@ -52,6 +52,10 @@ go2/dreamflex:
   max_cmd_x: 0.5
   max_cmd_y: 0.5
   max_cmd_yaw: 0.5
+  udp_command_enabled: true
+  udp_command_host: "0.0.0.0"
+  udp_command_port: 5555
+  udp_command_timeout: 0.5
   commands_scale: [2.0, 2.0, 1.0]
   torque_limits: [23.5, 23.5, 23.5,
                   23.5, 23.5, 23.5,

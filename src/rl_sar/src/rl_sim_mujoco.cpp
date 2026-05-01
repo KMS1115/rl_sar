@@ -7,7 +7,13 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
 #include <iomanip>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <sstream>
 #include <vector>
 
@@ -210,6 +216,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
 
     // read params from yaml
     this->ReadYaml(this->robot_name, "base.yaml");
+    this->InitUdpCommandReceiver();
 
     // auto load FSM by robot_name
     if (FSMManager::GetInstance().IsTypeSupported(this->robot_name))
@@ -273,6 +280,7 @@ RL_Sim::~RL_Sim()
     this->loop_joystick->shutdown();
     this->loop_control->shutdown();
     this->loop_rl->shutdown();
+    this->CloseUdpCommandReceiver();
 #ifdef PLOT
     this->loop_plot->shutdown();
 #endif
@@ -964,6 +972,7 @@ void RL_Sim::GetSysJoystick()
     // Check if joystick is valid before using
     if (!this->sys_js)
     {
+        this->PollUdpCommand();
         return;
     }
 
@@ -1047,6 +1056,165 @@ void RL_Sim::GetSysJoystick()
         this->control.y = 0.0f;
         this->control.yaw = 0.0f;
         this->sys_js_active = false;
+    }
+
+    this->PollUdpCommand();
+}
+
+void RL_Sim::InitUdpCommandReceiver()
+{
+    this->udp_command_enabled = this->params.Get<bool>("udp_command_enabled", false);
+    if (!this->udp_command_enabled)
+    {
+        return;
+    }
+    if (this->udp_command_fd >= 0 || this->udp_command_init_attempted)
+    {
+        return;
+    }
+    this->udp_command_init_attempted = true;
+
+    const std::string host = this->params.Get<std::string>("udp_command_host", "0.0.0.0");
+    const int port = this->params.Get<int>("udp_command_port", 5555);
+    this->udp_command_timeout = std::max(this->params.Get<float>("udp_command_timeout", 0.5f), 0.0f);
+
+    this->udp_command_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (this->udp_command_fd < 0)
+    {
+        std::cout << LOGGER::WARNING << "[UDP Command] socket() failed: " << std::strerror(errno) << std::endl;
+        this->udp_command_enabled = false;
+        return;
+    }
+
+    int reuse = 1;
+    setsockopt(this->udp_command_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(static_cast<uint16_t>(port));
+    if (host.empty() || host == "0.0.0.0")
+    {
+        address.sin_addr.s_addr = INADDR_ANY;
+    }
+    else if (inet_pton(AF_INET, host.c_str(), &address.sin_addr) != 1)
+    {
+        std::cout << LOGGER::WARNING << "[UDP Command] invalid bind host: " << host << std::endl;
+        this->CloseUdpCommandReceiver();
+        this->udp_command_enabled = false;
+        return;
+    }
+
+    if (bind(this->udp_command_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0)
+    {
+        std::cout << LOGGER::WARNING << "[UDP Command] bind(" << host << ":" << port
+                  << ") failed: " << std::strerror(errno) << std::endl;
+        this->CloseUdpCommandReceiver();
+        this->udp_command_enabled = false;
+        return;
+    }
+
+    int flags = fcntl(this->udp_command_fd, F_GETFL, 0);
+    if (flags >= 0)
+    {
+        fcntl(this->udp_command_fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    this->udp_command_last_packet_time = std::chrono::steady_clock::now();
+    std::cout << LOGGER::INFO << "[UDP Command] listening on " << host << ":" << port
+              << " (packet: vx vy wz)" << std::endl;
+}
+
+void RL_Sim::CloseUdpCommandReceiver()
+{
+    if (this->udp_command_fd >= 0)
+    {
+        close(this->udp_command_fd);
+        this->udp_command_fd = -1;
+    }
+    this->udp_command_active = false;
+}
+
+void RL_Sim::PollUdpCommand()
+{
+    if (this->udp_command_fd < 0 && this->params.Get<bool>("udp_command_enabled", false) && !this->udp_command_init_attempted)
+    {
+        this->InitUdpCommandReceiver();
+    }
+    if (!this->udp_command_enabled || this->udp_command_fd < 0)
+    {
+        return;
+    }
+
+    bool received_packet = false;
+    while (true)
+    {
+        char buffer[256] = {};
+        sockaddr_in source{};
+        socklen_t source_len = sizeof(source);
+        const ssize_t bytes = recvfrom(
+            this->udp_command_fd,
+            buffer,
+            sizeof(buffer) - 1,
+            0,
+            reinterpret_cast<sockaddr*>(&source),
+            &source_len);
+
+        if (bytes < 0)
+        {
+            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                std::cout << LOGGER::WARNING << "[UDP Command] recvfrom failed: " << std::strerror(errno) << std::endl;
+            }
+            break;
+        }
+        if (bytes == 0)
+        {
+            continue;
+        }
+
+        buffer[bytes] = '\0';
+        std::istringstream stream(buffer);
+        float vx = 0.0f;
+        float vy = 0.0f;
+        float wz = 0.0f;
+        if (!(stream >> vx >> vy >> wz))
+        {
+            continue;
+        }
+
+        this->udp_command = {vx, vy, wz};
+        this->udp_command_last_packet_time = std::chrono::steady_clock::now();
+        this->udp_command_active = true;
+        received_packet = true;
+
+        if (!this->udp_command_source_reported)
+        {
+            char source_ip[INET_ADDRSTRLEN] = {};
+            inet_ntop(AF_INET, &source.sin_addr, source_ip, sizeof(source_ip));
+            std::cout << LOGGER::INFO << "[UDP Command] receiving from "
+                      << source_ip << ":" << ntohs(source.sin_port) << std::endl;
+            this->udp_command_source_reported = true;
+        }
+    }
+
+    if (this->udp_command_active && this->udp_command_timeout > 0.0f)
+    {
+        const float stale_s = std::chrono::duration<float>(
+            std::chrono::steady_clock::now() - this->udp_command_last_packet_time).count();
+        if (stale_s > this->udp_command_timeout)
+        {
+            this->udp_command = {0.0f, 0.0f, 0.0f};
+            this->udp_command_active = false;
+            received_packet = true;
+        }
+    }
+
+    if (this->udp_command_active || received_packet)
+    {
+        this->control.x = this->udp_command[0];
+        this->control.y = this->udp_command[1];
+        this->control.yaw = this->udp_command[2];
+        this->ClampControlCommands();
     }
 }
 

@@ -27,6 +27,7 @@
 #include <memory>
 #include <string>
 #include <array>
+#include <chrono>
 
 #include <mujoco/mujoco.h>
 #include "joystick.hh"
@@ -115,6 +116,19 @@ private:
     bool TryOpenSysJoystick(const std::string& device);
     void SetupSysJoystick(int bits);
     void GetSysJoystick();
+
+    // UDP command input
+    int udp_command_fd = -1;
+    bool udp_command_enabled = false;
+    bool udp_command_init_attempted = false;
+    bool udp_command_active = false;
+    bool udp_command_source_reported = false;
+    float udp_command_timeout = 0.5f;
+    std::array<float, 3> udp_command = {0.0f, 0.0f, 0.0f};
+    std::chrono::steady_clock::time_point udp_command_last_packet_time;
+    void InitUdpCommandReceiver();
+    void CloseUdpCommandReceiver();
+    void PollUdpCommand();
 
     // others
     std::map<std::string, float> joint_positions;
