@@ -27,6 +27,7 @@
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 #include <csignal>
 #include <array>
+#include <vector>
 
 #ifdef PLOT
 #include "matplotlibcpp.h"
@@ -152,6 +153,7 @@ private:
     std::string GetFaultLegName() const;
     std::array<int, 3> GetFaultLegJointIndices() const;
     std::array<int, 3> GetLegJointIndices(int leg_idx) const;
+    std::vector<int> GetFaultJointOffsets() const;
     bool TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const;
     void BeginLockedFaultTransition(const std::array<int, 3>& joint_indices, const std::array<float, 3>& target_q);
     float GetLockedFaultDesiredQ(int leg_joint_offset) const;

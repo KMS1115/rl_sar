@@ -123,7 +123,15 @@ std::vector<float> ONNXModel::forward(const std::vector<std::vector<float>>& inp
             input_names.push_back(input_node_names_[i].c_str());
         }
 
-        const char* output_names[] = {output_node_names_[0].c_str()};
+        if (output_index_ >= output_node_names_.size())
+        {
+            throw std::runtime_error(
+                "model output_index " + std::to_string(output_index_) + " is out of range; model has "
+                + std::to_string(output_node_names_.size()) + " outputs"
+            );
+        }
+
+        const char* output_names[] = {output_node_names_[output_index_].c_str()};
 
         auto outputs = session_->Run(
             Ort::RunOptions{nullptr},

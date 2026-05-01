@@ -27,6 +27,7 @@ public:
     virtual std::vector<float> forward(const std::vector<std::vector<float>>& inputs) = 0;
     virtual std::string get_model_type() const = 0;
     virtual size_t get_input_count() const = 0;
+    virtual void set_output_index(size_t output_index) = 0;
 };
 
 class ONNXModel : public Model
@@ -44,6 +45,7 @@ private:
     std::vector<std::vector<int64_t>> input_shapes_;
     std::vector<std::vector<int64_t>> output_shapes_;
 #endif
+    size_t output_index_ = 0;
 
 public:
     ONNXModel();
@@ -61,6 +63,7 @@ public:
         return 0;
 #endif
     }
+    void set_output_index(size_t output_index) override { output_index_ = output_index; }
 
 private:
 #ifdef USE_ONNX

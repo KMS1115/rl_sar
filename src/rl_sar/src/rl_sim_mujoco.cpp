@@ -328,7 +328,8 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
             if (!suppress_fault_override && this->fault_mode == FaultMode::Locked)
             {
                 const auto fault_joint_indices = this->GetFaultLegJointIndices();
-                for (int leg_joint_offset = 0; leg_joint_offset < 3; ++leg_joint_offset)
+                const auto fault_joint_offsets = this->GetFaultJointOffsets();
+                for (int leg_joint_offset : fault_joint_offsets)
                 {
                     if (i == fault_joint_indices[leg_joint_offset])
                     {
@@ -344,7 +345,8 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
             if (!suppress_fault_override && this->fault_release_transition_active)
             {
                 const auto release_joint_indices = this->GetLegJointIndices(this->fault_release_leg_idx);
-                for (int leg_joint_offset = 0; leg_joint_offset < 3; ++leg_joint_offset)
+                const auto fault_joint_offsets = this->GetFaultJointOffsets();
+                for (int leg_joint_offset : fault_joint_offsets)
                 {
                     if (i == release_joint_indices[leg_joint_offset])
                     {
@@ -446,6 +448,25 @@ std::array<int, 3> RL_Sim::GetLegJointIndices(int leg_idx) const
 {
     const int leg_start = leg_idx * 3;
     return {leg_start + 0, leg_start + 1, leg_start + 2};
+}
+
+std::vector<int> RL_Sim::GetFaultJointOffsets() const
+{
+    const auto configured_offsets = this->params.Get<std::vector<int>>("fault_lock_joint_offsets", {});
+    std::vector<int> valid_offsets;
+    for (int offset : configured_offsets)
+    {
+        if (offset >= 0 && offset < 3 && std::find(valid_offsets.begin(), valid_offsets.end(), offset) == valid_offsets.end())
+        {
+            valid_offsets.push_back(offset);
+        }
+    }
+
+    if (valid_offsets.empty())
+    {
+        return {0, 1, 2};
+    }
+    return valid_offsets;
 }
 
 bool RL_Sim::TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const
@@ -774,11 +795,22 @@ void RL_Sim::PrintFaultStatus() const
     if (this->fault_mode == FaultMode::Locked)
     {
         const auto fault_joint_indices = this->GetFaultLegJointIndices();
+        const auto fault_joint_offsets = this->GetFaultJointOffsets();
         std::array<float, 3> configured_target_q = {0.0f, 0.0f, 0.0f};
         for (int i = 0; i < 3; ++i)
         {
             this->TryGetConfiguredLockedJointTarget(fault_joint_indices[i], &configured_target_q[i]);
         }
+        message << ", joint_offsets=[";
+        for (size_t i = 0; i < fault_joint_offsets.size(); ++i)
+        {
+            if (i > 0)
+            {
+                message << ", ";
+            }
+            message << fault_joint_offsets[i];
+        }
+        message << "]";
         message << ", q_target=[" << std::fixed << std::setprecision(3)
                 << configured_target_q[0] << ", " << configured_target_q[1] << ", " << configured_target_q[2] << "]"
                 << ", q_ref=[" << std::fixed << std::setprecision(3)

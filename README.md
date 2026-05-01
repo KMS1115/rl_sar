@@ -152,26 +152,24 @@ Examples:
 Fault injection in MuJoCo:
 
 - Available for every config, including `default`, `dreamwaq`, and `dreamflex`
-- Locked `thigh` / `calf` joints use fixed fold targets from `fault_lock_thigh_q` / `fault_lock_calf_q` in `policy/<robot>/base.yaml`
+- Locked joints are selected by `fault_lock_joint_offsets` (`0=hip`, `1=thigh`, `2=calf`); `go2/dreamflex` uses `[2]`, so only the selected leg's calf is folded/held
+- Locked targets use `fault_lock_hip_q` / `fault_lock_thigh_q` / `fault_lock_calf_q` from the active config, falling back to `policy/<robot>/base.yaml` defaults when not overridden
 - Switching the fault leg is sequential: the old leg is released first, then after the release ramp and a short settle delay the new leg is locked
-- If those keys are absent, the simulator falls back to the joint's `seated_dof_pos`
+- If those keys are absent, the simulator falls back to the joint's default stand angle
 - Keyboard:
-  - `T`: cycle `none -> locked -> weakened -> none`
-  - `Y` / `U`: select fault joint `- / +`
-  - `I` / `O`: adjust fault severity `- / +`
+  - `T`: cycle `none -> locked -> none`
+  - `Y` / `U`: select fault leg `- / +`
 - Gamepad:
   - `LB + A`: cycle fault mode
-  - `LB + DPad Left/Right`: select fault joint `- / +`
-  - `LB + DPad Down/Up`: adjust fault severity `- / +`
+  - `LB + DPad Left/Right`: select fault leg `- / +`
 
 Fault injection on hardware (`rl_real_go2`):
 
 - Uses the same controls as MuJoCo
-- `LB + A`: cycle `none -> locked -> weakened -> none`
-- `LB + DPad Left/Right`: select fault joint `- / +`
-- `LB + DPad Down/Up`: adjust severity
+- `LB + A`: cycle `none -> locked -> none`
+- `LB + DPad Left/Right`: select fault leg `- / +`
 - Fault-leg switching uses the same sequential release-then-lock behavior as MuJoCo
-- Locked mode holds the selected joint at the current joint angle, unless `fault_lock_thigh_q` / `fault_lock_calf_q` is configured in `policy/<robot>/base.yaml`
+- Locked mode holds the joints selected by `fault_lock_joint_offsets`; `go2/dreamflex` locks calf only at `fault_lock_calf_q`
 
 `go2w` + `default`
 

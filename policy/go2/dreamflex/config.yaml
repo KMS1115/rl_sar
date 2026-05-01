@@ -3,14 +3,17 @@
 
 go2/dreamflex:
   model_name: "policy.onnx"
+  # Current camel-lab DreamFlex ONNX exports one input (obs_history) and five outputs.
+  # rl_sar should consume output 1 (raw_actions), then apply action_scale/default_dof_pos here.
+  model_output_index: 1
   decimation: 4
-  history_two_inputs: true
+  history_two_inputs: false
   num_direct_observations: 45
   num_history_observations: 225
   num_observations: 225
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: [4, 3, 2, 1, 0]
-  observations_history_priority: "time"
+  observations_history_priority: "term"
   clip_obs: 100.0
   clip_actions_lower: [-100.0, -100.0, -100.0,
                        -100.0, -100.0, -100.0,
@@ -49,7 +52,7 @@ go2/dreamflex:
   max_cmd_x: 0.5
   max_cmd_y: 0.5
   max_cmd_yaw: 0.5
-  commands_scale: [2.0, 2.0, 0.25]
+  commands_scale: [2.0, 2.0, 1.0]
   torque_limits: [23.5, 23.5, 23.5,
                   23.5, 23.5, 23.5,
                   23.5, 23.5, 23.5,
@@ -58,6 +61,8 @@ go2/dreamflex:
                      0.00, 0.80, -1.50,
                      0.00, 0.80, -1.50,
                      0.00, 0.80, -1.50]
+  # DreamFlex fault test: selected leg's calf only. 0=hip, 1=thigh, 2=calf.
+  fault_lock_joint_offsets: [2]
   fault_lock_hip_q: 0.00
   fault_lock_thigh_q: 1.25
   fault_lock_calf_q: -2.25

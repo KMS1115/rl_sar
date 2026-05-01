@@ -328,6 +328,7 @@ void RL::InitRL(std::string robot_config_path)
     {
         throw std::runtime_error("Failed to load model from: " + model_path);
     }
+    this->model->set_output_index(static_cast<size_t>(this->params.Get<int>("model_output_index", 0)));
 }
 
 void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau)
