@@ -119,7 +119,7 @@ private:
 
     // UDP command input
     int udp_command_fd = -1;
-    bool udp_command_enabled = false;
+    bool udp_command_enabled = true;
     bool udp_command_init_attempted = false;
     bool udp_command_active = false;
     bool udp_command_source_reported = false;
@@ -129,6 +129,9 @@ private:
     void InitUdpCommandReceiver();
     void CloseUdpCommandReceiver();
     void PollUdpCommand();
+    bool IsGo2WPolicyToggleActive() const;
+    void ToggleGo2WPolicy(const std::string& source);
+    void LoadGo2WPolicy(const std::string& target_config, const std::string& source);
 
     // others
     std::map<std::string, float> joint_positions;

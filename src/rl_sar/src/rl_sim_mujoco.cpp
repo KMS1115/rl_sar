@@ -378,12 +378,78 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
     }
 }
 
+bool RL_Sim::IsGo2WPolicyToggleActive() const
+{
+    const std::string robot = ToLower(this->robot_name);
+    const std::string config = ToLower(this->config_name);
+    return robot == "go2w" && (config == "footstand" || config == "default");
+}
+
+void RL_Sim::ToggleGo2WPolicy(const std::string& source)
+{
+    if (!this->IsGo2WPolicyToggleActive())
+    {
+        return;
+    }
+
+    const std::string current_config = ToLower(this->config_name);
+    const std::string target_config = current_config == "footstand" ? "default" : "footstand";
+    this->LoadGo2WPolicy(target_config, source);
+}
+
+void RL_Sim::LoadGo2WPolicy(const std::string& target_config, const std::string& source)
+{
+    const std::string previous_config = this->config_name;
+    const YAML::Node previous_config_node = this->params.config_node;
+
+    try
+    {
+        this->rl_init_done = false;
+        this->config_name = target_config;
+        this->params.config_node = YAML::Node(YAML::NodeType::Map);
+        this->ReadYaml(this->robot_name, "base.yaml");
+        this->InitRL(this->robot_name + "/" + this->config_name);
+
+        this->now_state = this->robot_state;
+        this->start_state = this->robot_state;
+        this->episode_length_buf = 0;
+
+        this->fault_mode = FaultMode::None;
+        this->fault_lock_transition_active = false;
+        this->fault_release_transition_active = false;
+        this->fault_release_phase = FaultReleasePhase::None;
+        this->pending_fault_leg_idx = -1;
+        this->fault_switch_settle_start_motiontime = -1;
+
+        std::cout << std::endl << LOGGER::INFO << "[Policy Switch] " << source
+                  << " -> go2w/" << this->config_name << std::endl;
+    }
+    catch (const std::exception& e)
+    {
+        this->config_name = previous_config;
+        this->params.config_node = previous_config_node;
+        this->rl_init_done = false;
+        std::cout << std::endl << LOGGER::ERROR << "[Policy Switch] failed to load go2w/"
+                  << target_config << ": "
+                  << e.what() << std::endl;
+    }
+}
+
 void RL_Sim::RobotControl()
 {
     // Lock the sim mutex once for the entire control cycle to prevent race conditions
     const std::lock_guard<std::recursive_mutex> lock(sim->mtx);
 
     this->GetState(&this->robot_state);
+
+    if (this->control.current_keyboard == Input::Keyboard::C)
+    {
+        this->ToggleGo2WPolicy("keyboard c");
+    }
+    if (this->control.current_gamepad == Input::Gamepad::Y)
+    {
+        this->ToggleGo2WPolicy("gamepad Y");
+    }
 
     this->StateController(&this->robot_state, &this->robot_command);
 
@@ -1063,7 +1129,7 @@ void RL_Sim::GetSysJoystick()
 
 void RL_Sim::InitUdpCommandReceiver()
 {
-    this->udp_command_enabled = this->params.Get<bool>("udp_command_enabled", false);
+    this->udp_command_enabled = this->params.Get<bool>("udp_command_enabled", true);
     if (!this->udp_command_enabled)
     {
         return;
@@ -1136,7 +1202,7 @@ void RL_Sim::CloseUdpCommandReceiver()
 
 void RL_Sim::PollUdpCommand()
 {
-    if (this->udp_command_fd < 0 && this->params.Get<bool>("udp_command_enabled", false) && !this->udp_command_init_attempted)
+    if (this->udp_command_fd < 0 && this->params.Get<bool>("udp_command_enabled", true) && !this->udp_command_init_attempted)
     {
         this->InitUdpCommandReceiver();
     }
@@ -1197,6 +1263,7 @@ void RL_Sim::PollUdpCommand()
         }
     }
 
+    bool timed_out = false;
     if (this->udp_command_active && this->udp_command_timeout > 0.0f)
     {
         const float stale_s = std::chrono::duration<float>(
@@ -1205,7 +1272,7 @@ void RL_Sim::PollUdpCommand()
         {
             this->udp_command = {0.0f, 0.0f, 0.0f};
             this->udp_command_active = false;
-            received_packet = true;
+            timed_out = true;
         }
     }
 
@@ -1214,6 +1281,13 @@ void RL_Sim::PollUdpCommand()
         this->control.x = this->udp_command[0];
         this->control.y = this->udp_command[1];
         this->control.yaw = this->udp_command[2];
+        this->ClampControlCommands();
+    }
+    else if (timed_out && !this->sys_js_active)
+    {
+        this->control.x = 0.0f;
+        this->control.y = 0.0f;
+        this->control.yaw = 0.0f;
         this->ClampControlCommands();
     }
 }
