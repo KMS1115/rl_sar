@@ -236,6 +236,7 @@ public:
     std::string GetCommandFrame() const;
     std::vector<float> AdaptRootVectorToObservationFrame(const std::vector<float>& vec_body) const;
     std::vector<float> AdaptCommandToPolicyFrame(const std::vector<float>& command) const;
+    virtual std::vector<float> GetJointFaultVector() const;
 
     // history buffer
     ObservationBuffer history_obs_buf;

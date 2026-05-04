@@ -165,6 +165,7 @@ private:
     std::array<int, 3> GetFaultLegJointIndices() const;
     std::array<int, 3> GetLegJointIndices(int leg_idx) const;
     std::vector<int> GetFaultJointOffsets() const;
+    std::vector<float> GetJointFaultVector() const override;
     bool TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const;
     void BeginLockedFaultTransition(const std::array<int, 3>& joint_indices, const std::array<float, 3>& target_q);
     float GetLockedFaultDesiredQ(int leg_joint_offset) const;

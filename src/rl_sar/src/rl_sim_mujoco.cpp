@@ -543,6 +543,26 @@ std::vector<int> RL_Sim::GetFaultJointOffsets() const
     return valid_offsets;
 }
 
+std::vector<float> RL_Sim::GetJointFaultVector() const
+{
+    std::vector<float> fault_vector(this->params.Get<int>("num_of_dofs"), 0.0f);
+    if (this->fault_mode != FaultMode::Locked)
+    {
+        return fault_vector;
+    }
+
+    const auto joint_indices = this->GetFaultLegJointIndices();
+    for (int leg_joint_offset : this->GetFaultJointOffsets())
+    {
+        const int joint_idx = joint_indices[leg_joint_offset];
+        if (joint_idx >= 0 && joint_idx < static_cast<int>(fault_vector.size()))
+        {
+            fault_vector[joint_idx] = 1.0f;
+        }
+    }
+    return fault_vector;
+}
+
 bool RL_Sim::TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const
 {
     if (target_q == nullptr || joint_idx < 0 || joint_idx >= this->params.Get<int>("num_of_dofs"))

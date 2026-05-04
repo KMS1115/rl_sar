@@ -186,6 +186,10 @@ std::vector<float> RL::ComputeObservation()
         {
             obs_list.push_back(this->obs.actions);
         }
+        else if (observation == "joint_fault_vector")
+        {
+            obs_list.push_back(this->GetJointFaultVector());
+        }
         // ============= Other Observations =============
         else if (observation == "whole_body_tracking/motion_command")
         {
@@ -256,6 +260,16 @@ std::vector<float> RL::ComputeObservation()
     }
     std::vector<float> clamped_obs = clamp(obs, -this->params.Get<float>("clip_obs"), this->params.Get<float>("clip_obs"));
     return clamped_obs;
+}
+
+std::vector<float> RL::GetJointFaultVector() const
+{
+    int num_of_dofs = this->params.Get<int>("num_of_dofs", 0);
+    if (num_of_dofs <= 0)
+    {
+        num_of_dofs = static_cast<int>(this->obs.dof_pos.size());
+    }
+    return std::vector<float>(num_of_dofs, 0.0f);
 }
 
 void RL::InitObservations()

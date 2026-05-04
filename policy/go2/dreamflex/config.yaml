@@ -8,10 +8,10 @@ go2/dreamflex:
   model_output_index: 1
   decimation: 4
   history_two_inputs: false
-  num_direct_observations: 45
-  num_history_observations: 225
-  num_observations: 225
-  observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
+  num_direct_observations: 57
+  num_history_observations: 285
+  num_observations: 285
+  observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions", "joint_fault_vector"]
   observations_history: [4, 3, 2, 1, 0]
   observations_history_priority: "term"
   clip_obs: 100.0
