@@ -545,7 +545,12 @@ std::vector<int> RL_Sim::GetFaultJointOffsets() const
 
 std::vector<float> RL_Sim::GetJointFaultVector() const
 {
-    std::vector<float> fault_vector(this->params.Get<int>("num_of_dofs"), 0.0f);
+    int fault_vector_dim = this->params.Get<int>("joint_fault_vector_dim", this->params.Get<int>("num_of_dofs", 0));
+    if (fault_vector_dim < 0)
+    {
+        fault_vector_dim = 0;
+    }
+    std::vector<float> fault_vector(fault_vector_dim, 0.0f);
     if (this->fault_mode != FaultMode::Locked)
     {
         return fault_vector;

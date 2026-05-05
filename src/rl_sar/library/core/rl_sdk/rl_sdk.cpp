@@ -24,6 +24,42 @@ std::vector<float> RearFootstandFrameFromBody(const std::vector<float>& vec_body
 
     return {-vec_body[2], vec_body[1], vec_body[0]};
 }
+
+bool ContainsIndex(const std::vector<int>& values, int index)
+{
+    return std::find(values.begin(), values.end(), index) != values.end();
+}
+
+std::vector<int> GetLegDofIndices(const YamlParams& params)
+{
+    const int num_dofs = params.Get<int>("num_of_dofs", 0);
+    const auto wheel_indices = params.Get<std::vector<int>>("wheel_indices", {});
+
+    std::vector<int> leg_indices;
+    leg_indices.reserve(std::max(num_dofs, 0));
+    for (int i = 0; i < num_dofs; ++i)
+    {
+        if (!ContainsIndex(wheel_indices, i))
+        {
+            leg_indices.push_back(i);
+        }
+    }
+    return leg_indices;
+}
+
+std::vector<float> SelectDofs(const std::vector<float>& values, const std::vector<int>& indices)
+{
+    std::vector<float> selected;
+    selected.reserve(indices.size());
+    for (int index : indices)
+    {
+        if (index >= 0 && index < static_cast<int>(values.size()))
+        {
+            selected.push_back(values[index]);
+        }
+    }
+    return selected;
+}
 }
 
 void RL::StateController(const RobotState<float>* state, RobotCommand<float>* command)
@@ -182,6 +218,19 @@ std::vector<float> RL::ComputeObservation()
         {
             obs_list.push_back(this->obs.dof_vel * this->params.Get<float>("dof_vel_scale"));
         }
+        else if (observation == "leg_dof_pos")
+        {
+            std::vector<float> dof_pos_rel = this->obs.dof_pos - this->params.Get<std::vector<float>>("default_dof_pos");
+            obs_list.push_back(SelectDofs(dof_pos_rel, GetLegDofIndices(this->params)) * this->params.Get<float>("dof_pos_scale"));
+        }
+        else if (observation == "leg_dof_vel")
+        {
+            obs_list.push_back(SelectDofs(this->obs.dof_vel, GetLegDofIndices(this->params)) * this->params.Get<float>("dof_vel_scale"));
+        }
+        else if (observation == "wheel_dof_vel")
+        {
+            obs_list.push_back(SelectDofs(this->obs.dof_vel, this->params.Get<std::vector<int>>("wheel_indices")) * this->params.Get<float>("dof_vel_scale"));
+        }
         else if (observation == "actions")
         {
             obs_list.push_back(this->obs.actions);
@@ -264,12 +313,12 @@ std::vector<float> RL::ComputeObservation()
 
 std::vector<float> RL::GetJointFaultVector() const
 {
-    int num_of_dofs = this->params.Get<int>("num_of_dofs", 0);
-    if (num_of_dofs <= 0)
+    int fault_vector_dim = this->params.Get<int>("joint_fault_vector_dim", this->params.Get<int>("num_of_dofs", 0));
+    if (fault_vector_dim <= 0)
     {
-        num_of_dofs = static_cast<int>(this->obs.dof_pos.size());
+        fault_vector_dim = static_cast<int>(this->obs.dof_pos.size());
     }
-    return std::vector<float>(num_of_dofs, 0.0f);
+    return std::vector<float>(fault_vector_dim, 0.0f);
 }
 
 void RL::InitObservations()

@@ -66,7 +66,7 @@ Available controller configs:
 
 - `default` (`go2`, `go2w`)
 - `dreamwaq` (`go2`, `go2w`)
-- `dreamflex` (`go2` only)
+- `dreamflex` (`go2`, `go2w`)
 - `footstand` (`go2w` only)
 
 Available MuJoCo scenes:
@@ -111,6 +111,12 @@ Examples:
 ./cmake_build/rl_real_go2 go2w dreamwaq
 ```
 
+`go2w` + `dreamflex`
+
+```bash
+./cmake_build/rl_real_go2 go2w dreamflex
+```
+
 `go2w` + `footstand`
 
 ```bash
@@ -152,7 +158,7 @@ Examples:
 Fault injection in MuJoCo:
 
 - Available for every config, including `default`, `dreamwaq`, and `dreamflex`
-- Locked joints are selected by `fault_lock_joint_offsets` (`0=hip`, `1=thigh`, `2=calf`); `go2/dreamflex` uses `[2]`, so only the selected leg's calf is folded/held
+- Locked joints are selected by `fault_lock_joint_offsets` (`0=hip`, `1=thigh`, `2=calf`); `go2/dreamflex` and `go2w/dreamflex` use `[2]`, so only the selected leg's calf is folded/held
 - Locked targets use `fault_lock_hip_q` / `fault_lock_thigh_q` / `fault_lock_calf_q` from the active config, falling back to `policy/<robot>/base.yaml` defaults when not overridden
 - Switching the fault leg is sequential: the old leg is released first, then after the release ramp and a short settle delay the new leg is locked
 - If those keys are absent, the simulator falls back to the joint's default stand angle
@@ -170,6 +176,7 @@ Fault injection on hardware (`rl_real_go2`):
 - `LB + DPad Left/Right`: select fault leg `- / +`
 - Fault-leg switching uses the same sequential release-then-lock behavior as MuJoCo
 - Locked mode holds the joints selected by `fault_lock_joint_offsets`; `go2/dreamflex` locks calf only at `fault_lock_calf_q`
+- `go2w/dreamflex` uses the same calf-only lock behavior and ignores wheels in the policy fault vector
 
 `go2w` + `default`
 
@@ -181,6 +188,12 @@ Fault injection on hardware (`rl_real_go2`):
 
 ```bash
 ./cmake_build/rl_sim_mujoco go2w dreamwaq
+```
+
+`go2w` + `dreamflex`
+
+```bash
+./cmake_build/rl_sim_mujoco go2w dreamflex
 ```
 
 `go2w` + `footstand`
@@ -210,6 +223,7 @@ Policy/config lookup:
   - `go2 + dreamflex` -> `policy/go2/dreamflex/`
   - `go2w + default` -> `policy/go2w/default/`
   - `go2w + dreamwaq` -> `policy/go2w/dreamwaq/`
+  - `go2w + dreamflex` -> `policy/go2w/dreamflex/`
   - `go2w + footstand` -> `policy/go2w/footstand/`
 
 ## Notes

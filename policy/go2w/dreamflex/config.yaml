@@ -1,0 +1,88 @@
+# Copyright (c) 2024-2025 Ziqi Fan
+# SPDX-License-Identifier: Apache-2.0
+
+go2w/dreamflex:
+  model_name: "policy.onnx"
+  # Camel-lab Go2W DreamFlex ONNX exports one history input and multiple outputs.
+  # rl_sar consumes output 1 (raw_actions), then applies action_scale/default_dof_pos here.
+  model_output_index: 1
+  decimation: 4
+  history_two_inputs: false
+  num_direct_observations: 53
+  num_history_observations: 265
+  num_observations: 265
+  observations: ["ang_vel", "gravity_vec", "commands", "leg_dof_pos", "leg_dof_vel", "wheel_dof_vel", "actions"]
+  observations_history: [4, 3, 2, 1, 0]
+  observations_history_priority: "term"
+  clip_obs: 100.0
+  clip_actions_lower: [-100.0, -100.0, -100.0,
+                       -100.0, -100.0, -100.0,
+                       -100.0, -100.0, -100.0,
+                       -100.0, -100.0, -100.0,
+                       -100.0, -100.0, -100.0, -100.0]
+  clip_actions_upper: [100.0, 100.0, 100.0,
+                       100.0, 100.0, 100.0,
+                       100.0, 100.0, 100.0,
+                       100.0, 100.0, 100.0,
+                       100.0, 100.0, 100.0, 100.0]
+  rl_kp: [25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          0.0, 0.0, 0.0, 0.0]
+  rl_kd: [0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5, 0.5]
+  fixed_kp: [70.0, 70.0, 70.0,
+             70.0, 70.0, 70.0,
+             70.0, 70.0, 70.0,
+             70.0, 70.0, 70.0,
+             0.0, 0.0, 0.0, 0.0]
+  fixed_kd: [5.0, 5.0, 5.0,
+             5.0, 5.0, 5.0,
+             5.0, 5.0, 5.0,
+             5.0, 5.0, 5.0,
+             0.5, 0.5, 0.5, 0.5]
+  num_of_dofs: 16
+  action_scale: [0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25,
+                 5.0, 5.0, 5.0, 5.0]
+  wheel_indices: [12, 13, 14, 15]
+  lin_vel_scale: 2.0
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  max_cmd_x: 0.5
+  max_cmd_y: 0.5
+  max_cmd_yaw: 0.5
+  udp_command_enabled: true
+  udp_command_host: "0.0.0.0"
+  udp_command_port: 5555
+  udp_command_timeout: 0.5
+  commands_scale: [2.0, 2.0, 1.0]
+  torque_limits: [23.5, 23.5, 23.5,
+                  23.5, 23.5, 23.5,
+                  23.5, 23.5, 23.5,
+                  23.5, 23.5, 23.5,
+                  23.5, 23.5, 23.5, 23.5]
+  default_dof_pos: [ 0.00, 0.80, -1.50,
+                     0.00, 0.80, -1.50,
+                     0.00, 0.80, -1.50,
+                     0.00, 0.80, -1.50,
+                     0.00, 0.00, 0.00, 0.00]
+  # Fault vector is used only for runtime fault injection, not policy observation.
+  joint_fault_vector_dim: 12
+  # DreamFlex fault test: selected leg's calf only. 0=hip, 1=thigh, 2=calf.
+  fault_lock_joint_offsets: [2]
+  fault_lock_hip_q: 0.00
+  fault_lock_thigh_q: 1.25
+  fault_lock_calf_q: -2.40
+  fault_lock_ramp_duration: 1.0
+  fault_switch_settle_duration: 2.0
+  fault_transition_kp: 30.0
+  fault_transition_kd: 2.5
+  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
