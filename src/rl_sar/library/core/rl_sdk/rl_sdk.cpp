@@ -407,8 +407,18 @@ void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &ou
     std::vector<float> all_actions_scaled = pos_actions_scaled + vel_actions_scaled;
     output_dof_pos = pos_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos");
     output_dof_vel = vel_actions_scaled;
-    output_dof_tau = this->params.Get<std::vector<float>>("rl_kp") * (all_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos") - this->obs.dof_pos) - this->params.Get<std::vector<float>>("rl_kd") * this->obs.dof_vel;
-    output_dof_tau = clamp(output_dof_tau, -this->params.Get<std::vector<float>>("torque_limits"), this->params.Get<std::vector<float>>("torque_limits"));
+
+    if (this->params.Get<bool>("send_pd_tau", false))
+    {
+        output_dof_tau = this->params.Get<std::vector<float>>("rl_kp") * (all_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos") - this->obs.dof_pos) - this->params.Get<std::vector<float>>("rl_kd") * this->obs.dof_vel;
+        output_dof_tau = clamp(output_dof_tau, -this->params.Get<std::vector<float>>("torque_limits"), this->params.Get<std::vector<float>>("torque_limits"));
+    }
+    else
+    {
+        // Position/velocity target policies already use Unitree's internal kp/kd loop.
+        // Sending an extra PD-computed tau would apply the same PD correction twice.
+        output_dof_tau.assign(actions.size(), 0.0f);
+    }
 }
 
 int RL::InverseJointMapping(int idx) const
