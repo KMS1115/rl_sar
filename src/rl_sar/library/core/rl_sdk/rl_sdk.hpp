@@ -224,8 +224,14 @@ public:
 
     // csv logger
     std::string csv_filename;
+    bool csv_logger_enabled = false;
+    bool csv_logger_flush = true;
+    std::ofstream csv_file;
+    std::vector<float> csv_prev_actions;
+    std::vector<float> csv_prev_output_dof_pos;
     void CSVInit(std::string robot_name);
-    void CSVLogger(const std::vector<float> &torque, const std::vector<float> &tau_est, const std::vector<float> &joint_pos, const std::vector<float> &joint_pos_target, const std::vector<float> &joint_vel);
+    void CSVClose();
+    void CSVLogger(const std::vector<float> &tau_est);
 
     // control
     Control control;

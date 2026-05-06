@@ -260,9 +260,6 @@ RL_Sim::RL_Sim(int argc, char **argv)
     this->loop_plot = std::make_shared<LoopFunc>("loop_plot", 0.001, std::bind(&RL_Sim::Plot, this));
     this->loop_plot->start();
 #endif
-#ifdef CSV_LOGGER
-    this->CSVInit(this->robot_name + "/" + this->config_name);
-#endif
 
     std::cout << LOGGER::INFO << "RL_Sim start" << std::endl;
     this->PrintFaultStatus();
@@ -284,6 +281,7 @@ RL_Sim::~RL_Sim()
 #ifdef PLOT
     this->loop_plot->shutdown();
 #endif
+    this->CSVClose();
     std::cout << LOGGER::INFO << "RL_Sim exit" << std::endl;
 }
 
@@ -1352,14 +1350,15 @@ void RL_Sim::RunModel()
         // this->TorqueProtect(this->output_dof_tau);
         // this->AttitudeProtect(this->robot_state.imu.quaternion, 75.0f, 75.0f);
 
-#ifdef CSV_LOGGER
-        std::vector<float> tau_est(this->params.Get<int>("num_of_dofs"), 0.0f);
-        for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+        if (this->csv_logger_enabled)
         {
-            tau_est[i] = this->joint_efforts[this->params.Get<std::vector<std::string>>("joint_controller_names")[i]];
+            std::vector<float> tau_est(this->params.Get<int>("num_of_dofs"), 0.0f);
+            for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+            {
+                tau_est[i] = this->joint_efforts[this->params.Get<std::vector<std::string>>("joint_controller_names")[i]];
+            }
+            this->CSVLogger(tau_est);
         }
-        this->CSVLogger(this->output_dof_tau, tau_est, this->obs.dof_pos, this->output_dof_pos, this->obs.dof_vel);
-#endif
     }
 }
 

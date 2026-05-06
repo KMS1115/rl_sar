@@ -5,6 +5,12 @@
 
 #include "rl_sdk.hpp"
 
+#include <chrono>
+#include <cmath>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
+
 namespace
 {
 std::string ToLowerCopy(std::string text)
@@ -59,6 +65,43 @@ std::vector<float> SelectDofs(const std::vector<float>& values, const std::vecto
         }
     }
     return selected;
+}
+
+std::string MakeTimestampForFilename()
+{
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm local_time{};
+    localtime_r(&now_time, &local_time);
+
+    std::ostringstream ss;
+    ss << std::put_time(&local_time, "%Y%m%d_%H%M%S");
+    return ss.str();
+}
+
+float GetOrZero(const std::vector<float>& values, int index)
+{
+    if (index < 0 || index >= static_cast<int>(values.size()))
+    {
+        return 0.0f;
+    }
+    return values[index];
+}
+
+void WriteHeaderVector(std::ofstream& file, const std::string& prefix, int size)
+{
+    for (int i = 0; i < size; ++i)
+    {
+        file << prefix << "_" << i << ",";
+    }
+}
+
+void WriteValues(std::ofstream& file, const std::vector<float>& values, int size)
+{
+    for (int i = 0; i < size; ++i)
+    {
+        file << GetOrZero(values, i) << ",";
+    }
 }
 }
 
@@ -392,6 +435,7 @@ void RL::InitRL(std::string robot_config_path)
         throw std::runtime_error("Failed to load model from: " + model_path);
     }
     this->model->set_output_index(static_cast<size_t>(this->params.Get<int>("model_output_index", 0)));
+    this->CSVInit(robot_config_path);
 }
 
 void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau)
@@ -408,17 +452,8 @@ void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &ou
     output_dof_pos = pos_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos");
     output_dof_vel = vel_actions_scaled;
 
-    if (this->params.Get<bool>("send_pd_tau", false))
-    {
-        output_dof_tau = this->params.Get<std::vector<float>>("rl_kp") * (all_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos") - this->obs.dof_pos) - this->params.Get<std::vector<float>>("rl_kd") * this->obs.dof_vel;
-        output_dof_tau = clamp(output_dof_tau, -this->params.Get<std::vector<float>>("torque_limits"), this->params.Get<std::vector<float>>("torque_limits"));
-    }
-    else
-    {
-        // Position/velocity target policies already use Unitree's internal kp/kd loop.
-        // Sending an extra PD-computed tau would apply the same PD correction twice.
-        output_dof_tau.assign(actions.size(), 0.0f);
-    }
+    output_dof_tau = this->params.Get<std::vector<float>>("rl_kp") * (all_actions_scaled + this->params.Get<std::vector<float>>("default_dof_pos") - this->obs.dof_pos) - this->params.Get<std::vector<float>>("rl_kd") * this->obs.dof_vel;
+    output_dof_tau = clamp(output_dof_tau, -this->params.Get<std::vector<float>>("torque_limits"), this->params.Get<std::vector<float>>("torque_limits"));
 }
 
 int RL::InverseJointMapping(int idx) const
@@ -638,43 +673,166 @@ void RL::ReadYaml(const std::string& file_path, const std::string& file_name)
 
 void RL::CSVInit(std::string robot_path)
 {
-    csv_filename = std::string(POLICY_DIR) + "/" + robot_path + "/motor";
+    this->CSVClose();
+    this->csv_logger_enabled = this->params.Get<bool>("diagnostic_log", false);
+    if (!this->csv_logger_enabled)
+    {
+        return;
+    }
 
-    // Uncomment these lines if need timestamp for file name
-    // auto now = std::chrono::system_clock::now();
-    // std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-    // std::stringstream ss;
-    // ss << std::put_time(std::localtime(&now_c), "%Y%m%d%H%M%S");
-    // std::string timestamp = ss.str();
-    // csv_filename += "_" + timestamp;
+    this->csv_logger_flush = this->params.Get<bool>("diagnostic_log_flush", false);
+    const int num_dofs = this->params.Get<int>("num_of_dofs");
+    const int fault_dim = this->params.Get<int>("joint_fault_vector_dim", num_dofs);
 
-    csv_filename += ".csv";
-    std::ofstream file(csv_filename.c_str());
+    try
+    {
+        namespace fs = std::filesystem;
+        const fs::path log_dir = fs::path(std::string(POLICY_DIR)).parent_path() / "logs" / robot_path;
+        fs::create_directories(log_dir);
+        this->csv_filename = (log_dir / ("diagnostic_" + MakeTimestampForFilename() + ".csv")).string();
+        this->csv_file.open(this->csv_filename.c_str(), std::ios::out);
+    }
+    catch (const std::exception& e)
+    {
+        this->csv_logger_enabled = false;
+        std::cout << LOGGER::WARNING << "Failed to create diagnostic log: " << e.what() << std::endl;
+        return;
+    }
 
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "tau_cal_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "tau_est_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "joint_pos_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "joint_pos_target_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "joint_vel_" << i << ","; }
+    if (!this->csv_file.is_open())
+    {
+        this->csv_logger_enabled = false;
+        std::cout << LOGGER::WARNING << "Failed to open diagnostic log: " << this->csv_filename << std::endl;
+        return;
+    }
 
-    file << std::endl;
+    this->csv_prev_actions = this->obs.actions;
+    this->csv_prev_output_dof_pos = this->output_dof_pos;
+    if (this->csv_prev_actions.empty())
+    {
+        this->csv_prev_actions.resize(num_dofs, 0.0f);
+    }
+    if (this->csv_prev_output_dof_pos.empty())
+    {
+        this->csv_prev_output_dof_pos = this->params.Get<std::vector<float>>("default_dof_pos");
+    }
 
-    file.close();
+    this->csv_file << "motiontime,episode_step,cmd_x,cmd_y,cmd_yaw,"
+                   << "gyro_x,gyro_y,gyro_z,gravity_x,gravity_y,gravity_z,"
+                   << "quat_w,quat_x,quat_y,quat_z,"
+                   << "action_l2,action_delta_l2,target_delta_l2,";
+    WriteHeaderVector(this->csv_file, "action", num_dofs);
+    WriteHeaderVector(this->csv_file, "action_delta", num_dofs);
+    WriteHeaderVector(this->csv_file, "q", num_dofs);
+    WriteHeaderVector(this->csv_file, "dq", num_dofs);
+    WriteHeaderVector(this->csv_file, "q_target", num_dofs);
+    WriteHeaderVector(this->csv_file, "q_error", num_dofs);
+    WriteHeaderVector(this->csv_file, "q_target_delta", num_dofs);
+    WriteHeaderVector(this->csv_file, "dq_target", num_dofs);
+    WriteHeaderVector(this->csv_file, "tau_cal", num_dofs);
+    WriteHeaderVector(this->csv_file, "tau_est", num_dofs);
+    WriteHeaderVector(this->csv_file, "kp", num_dofs);
+    WriteHeaderVector(this->csv_file, "kd", num_dofs);
+    WriteHeaderVector(this->csv_file, "fault", fault_dim);
+    this->csv_file << std::endl;
+
+    std::cout << LOGGER::INFO << "Diagnostic CSV log: " << this->csv_filename << std::endl;
 }
 
-void RL::CSVLogger(const std::vector<float>& torque, const std::vector<float>& tau_est, const std::vector<float>& joint_pos, const std::vector<float>& joint_pos_target, const std::vector<float>& joint_vel)
+void RL::CSVClose()
 {
-    std::ofstream file(csv_filename.c_str(), std::ios_base::app);
+    if (this->csv_file.is_open())
+    {
+        this->csv_file.flush();
+        this->csv_file.close();
+        std::cout << LOGGER::INFO << "Diagnostic CSV saved: " << this->csv_filename << std::endl;
+    }
+    this->csv_logger_enabled = false;
+}
 
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << torque[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << tau_est[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << joint_pos[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << joint_pos_target[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << joint_vel[i] << ","; }
+void RL::CSVLogger(const std::vector<float>& tau_est)
+{
+    if (!this->csv_logger_enabled || !this->csv_file.is_open())
+    {
+        return;
+    }
 
-    file << std::endl;
+    const int interval = std::max(1, this->params.Get<int>("diagnostic_log_interval", 1));
+    if (interval > 1 && this->episode_length_buf % static_cast<unsigned long long>(interval) != 0)
+    {
+        return;
+    }
 
-    file.close();
+    const int num_dofs = this->params.Get<int>("num_of_dofs");
+    const auto rl_kp = this->params.Get<std::vector<float>>("rl_kp", std::vector<float>(num_dofs, 0.0f));
+    const auto rl_kd = this->params.Get<std::vector<float>>("rl_kd", std::vector<float>(num_dofs, 0.0f));
+    const auto fault_vector = this->GetJointFaultVector();
+
+    std::vector<float> action_delta(num_dofs, 0.0f);
+    std::vector<float> q_error(num_dofs, 0.0f);
+    std::vector<float> q_target_delta(num_dofs, 0.0f);
+    float action_l2 = 0.0f;
+    float action_delta_l2 = 0.0f;
+    float target_delta_l2 = 0.0f;
+
+    for (int i = 0; i < num_dofs; ++i)
+    {
+        const float action = GetOrZero(this->obs.actions, i);
+        const float prev_action = GetOrZero(this->csv_prev_actions, i);
+        const float q = GetOrZero(this->obs.dof_pos, i);
+        const float q_target = GetOrZero(this->output_dof_pos, i);
+        const float prev_q_target = GetOrZero(this->csv_prev_output_dof_pos, i);
+
+        action_delta[i] = action - prev_action;
+        q_error[i] = q_target - q;
+        q_target_delta[i] = q_target - prev_q_target;
+        action_l2 += action * action;
+        action_delta_l2 += action_delta[i] * action_delta[i];
+        target_delta_l2 += q_target_delta[i] * q_target_delta[i];
+    }
+
+    this->csv_file << std::fixed << std::setprecision(6)
+                   << this->motiontime << ","
+                   << this->episode_length_buf << ","
+                   << this->control.x << ","
+                   << this->control.y << ","
+                   << this->control.yaw << ","
+                   << GetOrZero(this->obs.ang_vel, 0) << ","
+                   << GetOrZero(this->obs.ang_vel, 1) << ","
+                   << GetOrZero(this->obs.ang_vel, 2) << ","
+                   << GetOrZero(this->obs.gravity_vec, 0) << ","
+                   << GetOrZero(this->obs.gravity_vec, 1) << ","
+                   << GetOrZero(this->obs.gravity_vec, 2) << ","
+                   << GetOrZero(this->obs.base_quat, 0) << ","
+                   << GetOrZero(this->obs.base_quat, 1) << ","
+                   << GetOrZero(this->obs.base_quat, 2) << ","
+                   << GetOrZero(this->obs.base_quat, 3) << ","
+                   << std::sqrt(action_l2) << ","
+                   << std::sqrt(action_delta_l2) << ","
+                   << std::sqrt(target_delta_l2) << ",";
+
+    WriteValues(this->csv_file, this->obs.actions, num_dofs);
+    WriteValues(this->csv_file, action_delta, num_dofs);
+    WriteValues(this->csv_file, this->obs.dof_pos, num_dofs);
+    WriteValues(this->csv_file, this->obs.dof_vel, num_dofs);
+    WriteValues(this->csv_file, this->output_dof_pos, num_dofs);
+    WriteValues(this->csv_file, q_error, num_dofs);
+    WriteValues(this->csv_file, q_target_delta, num_dofs);
+    WriteValues(this->csv_file, this->output_dof_vel, num_dofs);
+    WriteValues(this->csv_file, this->output_dof_tau, num_dofs);
+    WriteValues(this->csv_file, tau_est, num_dofs);
+    WriteValues(this->csv_file, rl_kp, num_dofs);
+    WriteValues(this->csv_file, rl_kd, num_dofs);
+    WriteValues(this->csv_file, fault_vector, static_cast<int>(fault_vector.size()));
+    this->csv_file << std::endl;
+
+    if (this->csv_logger_flush)
+    {
+        this->csv_file.flush();
+    }
+
+    this->csv_prev_actions = this->obs.actions;
+    this->csv_prev_output_dof_pos = this->output_dof_pos;
 }
 
 bool RLFSMState::Interpolate(

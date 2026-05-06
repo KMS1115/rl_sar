@@ -152,9 +152,6 @@ RL_Real::RL_Real(int argc, char **argv)
     this->loop_plot = std::make_shared<LoopFunc>("loop_plot", 0.002, std::bind(&RL_Real::Plot, this));
     this->loop_plot->start();
 #endif
-#ifdef CSV_LOGGER
-    this->CSVInit(this->robot_name + "/" + this->config_name);
-#endif
 }
 
 RL_Real::~RL_Real()
@@ -165,6 +162,7 @@ RL_Real::~RL_Real()
 #ifdef PLOT
     this->loop_plot->shutdown();
 #endif
+    this->CSVClose();
     std::cout << LOGGER::INFO << "RL_Real exit" << std::endl;
 }
 
@@ -346,10 +344,10 @@ void RL_Real::RunModel()
         // this->TorqueProtect(this->output_dof_tau);
         // this->AttitudeProtect(this->robot_state.imu.quaternion, 75.0f, 75.0f);
 
-#ifdef CSV_LOGGER
-        std::vector<float> tau_est = this->robot_state.motor_state.tau_est;
-        this->CSVLogger(this->output_dof_tau, tau_est, this->obs.dof_pos, this->output_dof_pos, this->obs.dof_vel);
-#endif
+        if (this->csv_logger_enabled)
+        {
+            this->CSVLogger(this->robot_state.motor_state.tau_est);
+        }
     }
 }
 
