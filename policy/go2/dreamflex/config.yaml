@@ -3,30 +3,30 @@
 
 go2/dreamflex:
   model_name: "policy.onnx"
-  # Current camel-lab DreamFlex ONNX exports one input (obs_history) and five outputs.
-  # rl_sar should consume output 1 (raw_actions), then apply action_scale/default_dof_pos here.
-  model_output_index: 1
+  # DreamFlex ONNX inputs: direct_obs(45), femnet_obs(225).
+  # Outputs: 0=actions, 1=z_t, 2=est_vel, 3=est_fault, 4=est_foot_height.
+  model_output_index: 0
   decimation: 4
-  history_two_inputs: false
-  num_direct_observations: 57
-  num_history_observations: 285
-  num_observations: 285
-  observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions", "joint_fault_vector"]
+  history_two_inputs: true
+  num_direct_observations: 45
+  num_history_observations: 225
+  num_observations: 225
+  observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: [4, 3, 2, 1, 0]
   observations_history_priority: "term"
   clip_obs: 100.0
-  clip_actions_lower: [-100.0, -100.0, -100.0,
-                       -100.0, -100.0, -100.0,
-                       -100.0, -100.0, -100.0,
-                       -100.0, -100.0, -100.0]
-  clip_actions_upper: [100.0, 100.0, 100.0,
-                       100.0, 100.0, 100.0,
-                       100.0, 100.0, 100.0,
-                       100.0, 100.0, 100.0]
-  rl_kp: [25.0, 25.0, 25.0,
-          25.0, 25.0, 25.0,
-          25.0, 25.0, 25.0,
-          25.0, 25.0, 25.0]
+  clip_actions_lower: [-30.0, -30.0, -30.0,
+                       -30.0, -30.0, -30.0,
+                       -30.0, -30.0, -30.0,
+                       -30.0, -30.0, -30.0]
+  clip_actions_upper: [30.0, 30.0, 30.0,
+                       30.0, 30.0, 30.0,
+                       30.0, 30.0, 30.0,
+                       30.0, 30.0, 30.0]
+  rl_kp: [20.0, 20.0, 20.0,
+          20.0, 20.0, 20.0,
+          20.0, 20.0, 20.0,
+          20.0, 20.0, 20.0]
   rl_kd: [0.5, 0.5, 0.5,
           0.5, 0.5, 0.5,
           0.5, 0.5, 0.5,
@@ -51,12 +51,12 @@ go2/dreamflex:
   dof_vel_scale: 0.05
   max_cmd_x: 0.5
   max_cmd_y: 0.5
-  max_cmd_yaw: 0.5
+  max_cmd_yaw: 1.0
   udp_command_enabled: true
   udp_command_host: "0.0.0.0"
   udp_command_port: 5555
   udp_command_timeout: 0.5
-  commands_scale: [2.0, 2.0, 1.0]
+  commands_scale: [2.0, 2.0, 0.25]
   torque_limits: [23.5, 23.5, 23.5,
                   23.5, 23.5, 23.5,
                   23.5, 23.5, 23.5,
@@ -65,13 +65,23 @@ go2/dreamflex:
                      0.00, 0.80, -1.50,
                      0.00, 0.80, -1.50,
                      0.00, 0.80, -1.50]
-  # DreamFlex fault test: selected leg's calf only. 0=hip, 1=thigh, 2=calf.
-  fault_lock_joint_offsets: [2]
+  # Fault vector is used only for runtime fault injection, not policy observation.
+  joint_fault_vector_dim: 12
+  femnet_foot_height_dim: 4
+  femnet_foot_height_output_index: 4
+  # DreamFlex fault test: selected leg's full kinematic chain. 0=hip, 1=thigh, 2=calf.
+  fault_lock_joint_offsets: [0, 1, 2]
   fault_lock_hip_q: 0.00
   fault_lock_thigh_q: 1.25
   fault_lock_calf_q: -2.40
-  fault_lock_ramp_duration: 1.0
+  fault_lock_ramp_duration: 0.3
+  fault_command_limits_enabled: true
+  fault_lateral_scale: 0.0
+  fault_yaw_level_max: 0.35
+  fault_yaw_requires_forward: true
+  fault_turn_yaw_threshold: 0.05
+  fault_turn_min_lin_x: 0.12
   fault_switch_settle_duration: 2.0
-  fault_transition_kp: 30.0
-  fault_transition_kd: 2.5
+  fault_transition_kp: 20.0
+  fault_transition_kd: 2.0
   joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

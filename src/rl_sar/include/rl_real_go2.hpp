@@ -162,6 +162,7 @@ private:
     float GetReleasedFaultDesiredQ(int leg_joint_offset) const;
     float GetFaultReleasePhaseDuration() const;
     bool IsFaultReleaseTransitionComplete() const;
+    void ApplyFaultCommandLimits();
     void StartPolicyResumeTransition(const RobotCommand<float>* command);
     void UpdatePendingFaultSwitch(const RobotCommand<float>* command);
     void RefreshLockedLegTarget();

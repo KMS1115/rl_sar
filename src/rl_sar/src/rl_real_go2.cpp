@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include <vector>
@@ -225,6 +226,7 @@ void RL_Real::GetState(RobotState<float> *state)
     this->control.y = -this->joystick.lx() * this->GetCommandLimit("max_cmd_y");
     this->control.yaw = -this->joystick.rx() * this->GetCommandLimit("max_cmd_yaw");
     this->ClampControlCommands();
+    this->ApplyFaultCommandLimits();
 
     state->imu.quaternion[0] = this->unitree_low_state.imu_state().quaternion()[0]; // w
     state->imu.quaternion[1] = this->unitree_low_state.imu_state().quaternion()[1]; // x
@@ -319,6 +321,7 @@ void RL_Real::RunModel()
     if (this->rl_init_done)
     {
         this->episode_length_buf += 1;
+        this->ApplyFaultCommandLimits();
         this->obs.ang_vel = this->robot_state.imu.gyroscope;
         this->obs.commands = {this->control.x, this->control.y, this->control.yaw};
         this->obs.base_quat = this->robot_state.imu.quaternion;
@@ -749,6 +752,45 @@ float RL_Real::GetFaultReleasePhaseDuration() const
         return this->fault_return_to_policy_duration;
     }
     return 0.0f;
+}
+
+void RL_Real::ApplyFaultCommandLimits()
+{
+    if (this->fault_mode != FaultMode::Locked ||
+        !this->params.Get<bool>("fault_command_limits_enabled", false))
+    {
+        return;
+    }
+
+    const float max_cmd_x = this->GetCommandLimit("max_cmd_x");
+    const float max_cmd_y = this->GetCommandLimit("max_cmd_y");
+    const float max_cmd_yaw = this->GetCommandLimit("max_cmd_yaw");
+
+    const float lateral_scale = std::max(this->params.Get<float>("fault_lateral_scale", 1.0f), 0.0f);
+    const float fault_max_y = max_cmd_y * lateral_scale;
+    if (fault_max_y <= 0.0f)
+    {
+        this->control.y = 0.0f;
+    }
+    else
+    {
+        this->control.y = std::clamp(this->control.y, -fault_max_y, fault_max_y);
+    }
+
+    const float configured_yaw_limit = this->params.Get<float>("fault_yaw_level_max", 0.0f);
+    const float fault_yaw_limit =
+        configured_yaw_limit > 0.0f ? std::min(configured_yaw_limit, max_cmd_yaw) : max_cmd_yaw;
+    this->control.yaw = std::clamp(this->control.yaw, -fault_yaw_limit, fault_yaw_limit);
+
+    if (this->params.Get<bool>("fault_yaw_requires_forward", false))
+    {
+        const float yaw_threshold = std::max(this->params.Get<float>("fault_turn_yaw_threshold", 0.05f), 0.0f);
+        if (std::abs(this->control.yaw) > yaw_threshold)
+        {
+            const float min_x = std::clamp(this->params.Get<float>("fault_turn_min_lin_x", 0.0f), 0.0f, max_cmd_x);
+            this->control.x = std::clamp(std::abs(this->control.x), min_x, max_cmd_x);
+        }
+    }
 }
 
 bool RL_Real::IsFaultReleaseTransitionComplete() const
