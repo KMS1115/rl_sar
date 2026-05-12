@@ -90,7 +90,7 @@ class XboxCommandSource:
                     if event.code == "ABS_Y":
                         self._axes["left_y"] = self._axis(event.state, -1.0)
                     elif event.code == "ABS_X":
-                        self._axes["left_x"] = self._axis(event.state, 1.0)
+                        self._axes["left_x"] = self._axis(event.state, -1.0)
                     elif event.code == "ABS_RX":
                         self._axes["right_x"] = self._axis(event.state, -1.0)
                     elif event.code == "BTN_START" and event.state == 1:

@@ -72,6 +72,10 @@ Available controller configs:
 Available MuJoCo scenes:
 
 - `scene`
+- `scene_flat`
+- `scene_slope`
+- `scene_rough`
+- `scene_rough_slope`
 - `scene_terrain`
 
 ## Real Robot
@@ -205,7 +209,15 @@ Fault injection on hardware (`rl_real_go2`):
 Terrain examples:
 
 ```bash
-./cmake_build/rl_sim_mujoco go2 scene_terrain
+./cmake_build/rl_sim_mujoco go2 scene_slope dreamflex
+```
+
+```bash
+./cmake_build/rl_sim_mujoco go2 scene_rough dreamflex
+```
+
+```bash
+./cmake_build/rl_sim_mujoco go2 scene_rough_slope dreamflex
 ```
 
 ```bash

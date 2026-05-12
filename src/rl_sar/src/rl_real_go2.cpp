@@ -788,7 +788,8 @@ void RL_Real::ApplyFaultCommandLimits()
         if (std::abs(this->control.yaw) > yaw_threshold)
         {
             const float min_x = std::clamp(this->params.Get<float>("fault_turn_min_lin_x", 0.0f), 0.0f, max_cmd_x);
-            this->control.x = std::clamp(std::abs(this->control.x), min_x, max_cmd_x);
+            const float x_sign = this->control.x < 0.0f ? -1.0f : 1.0f;
+            this->control.x = x_sign * std::clamp(std::abs(this->control.x), min_x, max_cmd_x);
         }
     }
 }

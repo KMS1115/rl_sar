@@ -76,9 +76,9 @@ go2/dreamflex:
   fault_lock_calf_q: -2.40
   fault_lock_ramp_duration: 0.3
   fault_command_limits_enabled: true
-  fault_lateral_scale: 0.0
-  fault_yaw_level_max: 0.35
-  fault_yaw_requires_forward: true
+  fault_lateral_scale: 1.0
+  fault_yaw_level_max: 0.0
+  fault_yaw_requires_forward: false
   fault_turn_yaw_threshold: 0.05
   fault_turn_min_lin_x: 0.12
   fault_switch_settle_duration: 2.0
