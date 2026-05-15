@@ -3,6 +3,13 @@
 
 go2w/dreamwaq:
   model_name: "policy.onnx"
+  # Context ONNX input: history_obs(285).
+  # Outputs: 0=actions, 1=context.
+  model_output_index: 0
+  decimation: 4
+  dreamwaq_two_inputs: false
+  num_direct_observations: 57
+  num_history_observations: 285
   num_observations: 285
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: [4, 3, 2, 1, 0]

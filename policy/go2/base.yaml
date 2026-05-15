@@ -31,6 +31,7 @@ go2:
                     0.00, 1.36, -2.72,
                     0.00, 1.36, -2.72]
   fault_lock_hip_q: 0.00
+  fault_allowed_leg_indices: [2, 3]
   fault_lock_ramp_duration: 2.0
   fault_switch_settle_duration: 0.25
   fault_transition_kp: 40.0

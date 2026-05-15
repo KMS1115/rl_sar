@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 
 namespace
 {
@@ -102,6 +103,30 @@ void WriteValues(std::ofstream& file, const std::vector<float>& values, int size
     {
         file << GetOrZero(values, i) << ",";
     }
+}
+
+void CheckSize(const std::string& name, size_t expected, size_t actual)
+{
+    if (expected != actual)
+    {
+        throw std::runtime_error(
+            name + " dimension mismatch: expected " + std::to_string(expected)
+            + ", got " + std::to_string(actual)
+        );
+    }
+}
+
+size_t DirectObservationSize(const std::vector<int>& obs_dims)
+{
+    size_t size = 0;
+    for (int dim : obs_dims)
+    {
+        if (dim > 0)
+        {
+            size += static_cast<size_t>(dim);
+        }
+    }
+    return size;
 }
 }
 
@@ -364,6 +389,86 @@ std::vector<float> RL::GetJointFaultVector() const
     return std::vector<float>(fault_vector_dim, 0.0f);
 }
 
+void RL::ValidateObservationDimensions(const std::vector<float>& direct_obs) const
+{
+    const size_t direct_size = direct_obs.size();
+    const auto observations_history = this->params.Get<std::vector<int>>("observations_history");
+
+    if (this->params.Has("num_direct_observations"))
+    {
+        CheckSize(
+            "num_direct_observations",
+            static_cast<size_t>(this->params.Get<int>("num_direct_observations")),
+            direct_size
+        );
+    }
+
+    if (observations_history.empty())
+    {
+        if (this->params.Has("num_observations"))
+        {
+            CheckSize(
+                "num_observations",
+                static_cast<size_t>(this->params.Get<int>("num_observations")),
+                direct_size
+            );
+        }
+        return;
+    }
+
+    const size_t history_size = direct_size * observations_history.size();
+    if (this->params.Has("num_history_observations"))
+    {
+        CheckSize(
+            "num_history_observations",
+            static_cast<size_t>(this->params.Get<int>("num_history_observations")),
+            history_size
+        );
+    }
+    if (this->params.Has("num_observations"))
+    {
+        CheckSize(
+            "num_observations",
+            static_cast<size_t>(this->params.Get<int>("num_observations")),
+            history_size
+        );
+    }
+}
+
+void RL::ValidateModelInputDimensions() const
+{
+    if (!this->model)
+    {
+        return;
+    }
+
+    const size_t input_count = this->model->get_input_count();
+    if (input_count == 0)
+    {
+        return;
+    }
+
+    const size_t direct_size = DirectObservationSize(this->obs_dims);
+    const auto observations_history = this->params.Get<std::vector<int>>("observations_history");
+    const size_t history_size = direct_size * observations_history.size();
+
+    if (observations_history.empty())
+    {
+        CheckSize("model input 0", this->model->get_input_size(0), direct_size);
+        return;
+    }
+
+    if (input_count >= 2)
+    {
+        CheckSize("model input 0", this->model->get_input_size(0), direct_size);
+        CheckSize("model input 1", this->model->get_input_size(1), history_size);
+    }
+    else
+    {
+        CheckSize("model input 0", this->model->get_input_size(0), history_size);
+    }
+}
+
 void RL::InitObservations()
 {
     this->obs.lin_vel = {0.0f, 0.0f, 0.0f};
@@ -376,7 +481,8 @@ void RL::InitObservations()
     this->obs.dof_vel.resize(this->params.Get<int>("num_of_dofs"), 0.0f);
     this->obs.actions.clear();
     this->obs.actions.resize(this->params.Get<int>("num_of_dofs"), 0.0f);
-    this->ComputeObservation();
+    const std::vector<float> direct_obs = this->ComputeObservation();
+    this->ValidateObservationDimensions(direct_obs);
 }
 
 void RL::InitOutputs()
@@ -435,6 +541,7 @@ void RL::InitRL(std::string robot_config_path)
         throw std::runtime_error("Failed to load model from: " + model_path);
     }
     this->model->set_output_index(static_cast<size_t>(this->params.Get<int>("model_output_index", 0)));
+    this->ValidateModelInputDimensions();
     this->CSVInit(robot_config_path);
 }
 

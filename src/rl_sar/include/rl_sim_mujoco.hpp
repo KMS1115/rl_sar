@@ -101,8 +101,6 @@ private:
     // mujoco
     mjData *mj_data;
     mjModel *mj_model;
-    std::string scene_name;
-
     // joystick
     std::unique_ptr<Joystick> sys_js;
     JoystickEvent sys_js_event;
@@ -139,7 +137,7 @@ private:
     std::map<std::string, float> joint_efforts;
 
     FaultMode fault_mode = FaultMode::None;
-    int fault_leg_idx = 0;
+    int fault_leg_idx = 2;
     std::array<float, 3> fault_locked_q = {0.0f, 0.0f, 0.0f};
     std::array<float, 3> fault_lock_start_q = {0.0f, 0.0f, 0.0f};
     int fault_lock_start_motiontime = 0;
@@ -164,6 +162,9 @@ private:
     std::string GetFaultLegName() const;
     std::array<int, 3> GetFaultLegJointIndices() const;
     std::array<int, 3> GetLegJointIndices(int leg_idx) const;
+    std::vector<int> GetAllowedFaultLegIndices() const;
+    int NormalizeFaultLegIndex(int leg_idx) const;
+    int StepFaultLegIndex(int leg_idx, int delta) const;
     std::vector<int> GetFaultJointOffsets() const;
     std::vector<float> GetJointFaultVector() const override;
     bool TryGetConfiguredLockedJointTarget(int joint_idx, float* target_q) const;

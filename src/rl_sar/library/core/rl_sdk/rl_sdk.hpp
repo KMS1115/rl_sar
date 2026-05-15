@@ -210,6 +210,8 @@ public:
     void InitControl();
     void InitRL(std::string robot_config_path);
     void InitJointNum(size_t num_joints);
+    void ValidateObservationDimensions(const std::vector<float>& direct_obs) const;
+    void ValidateModelInputDimensions() const;
 
     // rl functions
     virtual std::vector<float> Forward() = 0;

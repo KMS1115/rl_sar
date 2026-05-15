@@ -12,6 +12,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <iomanip>
+#include <iterator>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -135,26 +136,33 @@ RL_Sim::RL_Sim(int argc, char **argv)
         throw std::runtime_error("Invalid arguments");
     }
 
-    this->robot_name = argv[1];
-    this->scene_name = "scene";
+    this->robot_name = ToLower(argv[1]);
     this->config_name = "default";
 
-    if (argc >= 3)
+    bool ignored_scene_arg = false;
+    for (int i = 2; i < argc; ++i)
     {
-        const std::string arg2 = argv[2];
-        if (arg2 == "scene")
+        const std::string arg = argv[i];
+        const std::string lowered = ToLower(arg);
+        if (IsKnownConfigName(this->robot_name, lowered))
         {
-            this->config_name = (argc > 3) ? argv[3] : "default";
+            this->config_name = lowered;
         }
-        else if (IsKnownConfigName(this->robot_name, arg2))
+        else if (lowered == "scene" || lowered.rfind("scene_", 0) == 0)
         {
-            this->config_name = arg2;
+            ignored_scene_arg = true;
         }
         else
         {
-            this->scene_name = arg2;
-            this->config_name = (argc > 3) ? argv[3] : "default";
+            this->config_name = lowered;
         }
+    }
+
+    if (ignored_scene_arg)
+    {
+        std::cout << LOGGER::WARNING
+                  << "[MuJoCo] Scene arguments are ignored; using fixed scene.xml terrain course."
+                  << std::endl;
     }
 
     this->ang_vel_axis = "body";
@@ -195,7 +203,10 @@ RL_Sim::RL_Sim(int argc, char **argv)
         std::make_unique<mj::GlfwAdapter>(),
         &cam, &opt, &pert, /* is_passive = */ false);
 
-    std::string filename = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/../rl_sar_zoo/" + this->robot_name + "_description/mjcf/" + this->scene_name + ".xml";
+    const std::string filename =
+        std::string(CMAKE_CURRENT_SOURCE_DIR) + "/../rl_sar_zoo/" +
+        this->robot_name + "_description/mjcf/scene.xml";
+    std::cout << LOGGER::INFO << "[MuJoCo] Scene: " << filename << std::endl;
 
     // start physics thread
     std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename.c_str());
@@ -217,6 +228,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
 
     // read params from yaml
     this->ReadYaml(this->robot_name, "base.yaml");
+    this->fault_leg_idx = this->NormalizeFaultLegIndex(this->fault_leg_idx);
     this->InitUdpCommandReceiver();
 
     // auto load FSM by robot_name
@@ -408,6 +420,7 @@ void RL_Sim::LoadGo2WPolicy(const std::string& target_config, const std::string&
         this->params.config_node = YAML::Node(YAML::NodeType::Map);
         this->ReadYaml(this->robot_name, "base.yaml");
         this->InitRL(this->robot_name + "/" + this->config_name);
+        this->fault_leg_idx = this->NormalizeFaultLegIndex(this->fault_leg_idx);
 
         this->now_state = this->robot_state;
         this->start_state = this->robot_state;
@@ -505,22 +518,65 @@ void RL_Sim::RobotControl()
 std::string RL_Sim::GetFaultLegName() const
 {
     static const std::array<std::string, 4> kLegNames = {"FR", "FL", "RR", "RL"};
-    if (this->fault_leg_idx >= 0 && this->fault_leg_idx < static_cast<int>(kLegNames.size()))
+    const int leg_idx = this->NormalizeFaultLegIndex(this->fault_leg_idx);
+    if (leg_idx >= 0 && leg_idx < static_cast<int>(kLegNames.size()))
     {
-        return kLegNames[this->fault_leg_idx];
+        return kLegNames[leg_idx];
     }
-    return "leg_" + std::to_string(this->fault_leg_idx);
+    return "leg_" + std::to_string(leg_idx);
 }
 
 std::array<int, 3> RL_Sim::GetFaultLegJointIndices() const
 {
-    return this->GetLegJointIndices(this->fault_leg_idx);
+    return this->GetLegJointIndices(this->NormalizeFaultLegIndex(this->fault_leg_idx));
 }
 
 std::array<int, 3> RL_Sim::GetLegJointIndices(int leg_idx) const
 {
     const int leg_start = leg_idx * 3;
     return {leg_start + 0, leg_start + 1, leg_start + 2};
+}
+
+std::vector<int> RL_Sim::GetAllowedFaultLegIndices() const
+{
+    const auto configured_legs = this->params.Get<std::vector<int>>("fault_allowed_leg_indices", {2, 3});
+    std::vector<int> valid_legs;
+    for (int leg_idx : configured_legs)
+    {
+        if (leg_idx >= 0 && leg_idx < 4 &&
+            std::find(valid_legs.begin(), valid_legs.end(), leg_idx) == valid_legs.end())
+        {
+            valid_legs.push_back(leg_idx);
+        }
+    }
+
+    if (valid_legs.empty())
+    {
+        return {2, 3};
+    }
+    return valid_legs;
+}
+
+int RL_Sim::NormalizeFaultLegIndex(int leg_idx) const
+{
+    const auto allowed_legs = this->GetAllowedFaultLegIndices();
+    if (std::find(allowed_legs.begin(), allowed_legs.end(), leg_idx) != allowed_legs.end())
+    {
+        return leg_idx;
+    }
+    return allowed_legs.front();
+}
+
+int RL_Sim::StepFaultLegIndex(int leg_idx, int delta) const
+{
+    const auto allowed_legs = this->GetAllowedFaultLegIndices();
+    const int current_leg_idx = this->NormalizeFaultLegIndex(leg_idx);
+    auto current = std::find(allowed_legs.begin(), allowed_legs.end(), current_leg_idx);
+    const int current_index =
+        current == allowed_legs.end() ? 0 : static_cast<int>(std::distance(allowed_legs.begin(), current));
+    const int count = static_cast<int>(allowed_legs.size());
+    const int next_index = ((current_index + delta) % count + count) % count;
+    return allowed_legs[next_index];
 }
 
 std::vector<int> RL_Sim::GetFaultJointOffsets() const
@@ -828,7 +884,7 @@ void RL_Sim::UpdatePendingFaultSwitch(const RobotCommand<float>* command)
         return;
     }
 
-    this->fault_leg_idx = this->pending_fault_leg_idx;
+    this->fault_leg_idx = this->NormalizeFaultLegIndex(this->pending_fault_leg_idx);
     this->pending_fault_leg_idx = -1;
     this->fault_switch_settle_start_motiontime = -1;
     this->fault_mode = FaultMode::Locked;
@@ -886,6 +942,7 @@ void RL_Sim::CycleFaultMode(const RobotCommand<float>* command)
     }
     else
     {
+        this->fault_leg_idx = this->NormalizeFaultLegIndex(this->fault_leg_idx);
         this->fault_mode = FaultMode::Locked;
         this->RefreshLockedLegTarget();
     }
@@ -895,8 +952,10 @@ void RL_Sim::CycleFaultMode(const RobotCommand<float>* command)
 void RL_Sim::SelectFaultLeg(int delta, const RobotCommand<float>* command)
 {
     (void)command;
-    const int selected_leg_idx = (this->pending_fault_leg_idx >= 0) ? this->pending_fault_leg_idx : this->fault_leg_idx;
-    const int next_leg_idx = (selected_leg_idx + delta + 4) % 4;
+    const int selected_leg_idx = (this->pending_fault_leg_idx >= 0) ?
+        this->NormalizeFaultLegIndex(this->pending_fault_leg_idx) :
+        this->NormalizeFaultLegIndex(this->fault_leg_idx);
+    const int next_leg_idx = this->StepFaultLegIndex(selected_leg_idx, delta);
     if (this->fault_mode == FaultMode::Locked)
     {
         if (next_leg_idx != this->fault_leg_idx)
@@ -916,7 +975,7 @@ void RL_Sim::SelectFaultLeg(int delta, const RobotCommand<float>* command)
     }
     else
     {
-        this->fault_leg_idx = next_leg_idx;
+        this->fault_leg_idx = this->NormalizeFaultLegIndex(next_leg_idx);
     }
     this->PrintFaultStatus();
 }
@@ -927,9 +986,21 @@ void RL_Sim::PrintFaultStatus() const
         ? static_cast<float>(this->motiontime - this->fault_release_start_motiontime) * this->params.Get<float>("dt")
         : 0.0f;
     const bool release_active = this->fault_release_transition_active && release_elapsed < this->fault_lock_ramp_duration;
+    const int active_leg_idx = this->NormalizeFaultLegIndex(this->fault_leg_idx);
+    const auto allowed_legs = this->GetAllowedFaultLegIndices();
     std::ostringstream message;
     message << LOGGER::INFO << "[DreamFLEX Fault] mode=" << FaultModeName(this->fault_mode)
-            << ", leg=" << this->fault_leg_idx << " (" << this->GetFaultLegName() << ")";
+            << ", leg=" << active_leg_idx << " (" << this->GetFaultLegName() << ")"
+            << ", allowed_legs=[";
+    for (size_t i = 0; i < allowed_legs.size(); ++i)
+    {
+        if (i > 0)
+        {
+            message << ", ";
+        }
+        message << allowed_legs[i];
+    }
+    message << "]";
     if (this->fault_mode == FaultMode::Locked)
     {
         const auto fault_joint_indices = this->GetFaultLegJointIndices();

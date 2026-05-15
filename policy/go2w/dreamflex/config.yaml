@@ -3,9 +3,9 @@
 
 go2w/dreamflex:
   model_name: "policy.onnx"
-  # Camel-lab Go2W DreamFlex ONNX exports one history input and multiple outputs.
-  # rl_sar consumes output 1 (raw_actions), then applies action_scale/default_dof_pos here.
-  model_output_index: 1
+  # Context ONNX input: history_obs(265).
+  # Outputs: 0=actions, 1=context.
+  model_output_index: 0
   diagnostic_log: true
   diagnostic_log_flush: false
   diagnostic_log_interval: 1

@@ -153,6 +153,28 @@ std::vector<float> ONNXModel::forward(const std::vector<std::vector<float>>& inp
 #endif
 }
 
+size_t ONNXModel::get_input_size(size_t index) const
+{
+#ifdef USE_ONNX
+    if (index >= input_shapes_.size())
+    {
+        throw std::out_of_range("input index " + std::to_string(index) + " is out of range");
+    }
+    size_t input_size = 1;
+    for (auto dim : input_shapes_[index])
+    {
+        if (dim > 0)
+        {
+            input_size *= static_cast<size_t>(dim);
+        }
+    }
+    return input_size;
+#else
+    (void)index;
+    return 0;
+#endif
+}
+
 #ifdef USE_ONNX
 void ONNXModel::setup_input_output_info()
 {

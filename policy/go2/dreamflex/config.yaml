@@ -3,11 +3,11 @@
 
 go2/dreamflex:
   model_name: "policy.onnx"
-  # DreamFlex ONNX inputs: direct_obs(45), femnet_obs(225).
-  # Outputs: 0=actions, 1=z_t, 2=est_vel, 3=est_fault, 4=est_foot_height.
+  # Context ONNX input: history_obs(225).
+  # Outputs: 0=actions, 1=context.
   model_output_index: 0
   decimation: 4
-  history_two_inputs: true
+  history_two_inputs: false
   num_direct_observations: 45
   num_history_observations: 225
   num_observations: 225
@@ -67,8 +67,6 @@ go2/dreamflex:
                      0.00, 0.80, -1.50]
   # Fault vector is used only for runtime fault injection, not policy observation.
   joint_fault_vector_dim: 12
-  femnet_foot_height_dim: 4
-  femnet_foot_height_output_index: 4
   # DreamFlex fault test: selected leg's full kinematic chain. 0=hip, 1=thigh, 2=calf.
   fault_lock_joint_offsets: [0, 1, 2]
   fault_lock_hip_q: 0.00

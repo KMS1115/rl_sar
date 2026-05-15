@@ -27,6 +27,7 @@ public:
     virtual std::vector<float> forward(const std::vector<std::vector<float>>& inputs) = 0;
     virtual std::string get_model_type() const = 0;
     virtual size_t get_input_count() const = 0;
+    virtual size_t get_input_size(size_t index) const = 0;
     virtual void set_output_index(size_t output_index) = 0;
 };
 
@@ -63,6 +64,7 @@ public:
         return 0;
 #endif
     }
+    size_t get_input_size(size_t index) const override;
     void set_output_index(size_t output_index) override { output_index_ = output_index; }
 
 private:
